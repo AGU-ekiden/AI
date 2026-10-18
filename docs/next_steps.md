@@ -30,6 +30,12 @@
    例：`postgresql://lab_reader.<プロジェクトID>:<パスワード>@<ホスト>:5432/postgres`
 3. 同様に `lab_writer` 用も作る（研究用保存は後日。今日は lab_reader だけで可）。
 
+### A-2.5. rkm の RLS に lab_reader の読み取り許可を追加（2026-10-19 判明）
+- rkm の全表で RLS が有効・ポリシー0件のため、lab_reader からは0件に見えた（postgres では records 209,323 件）。
+- `docs/rkm_read_policy.sql` を SQL Editor で全体を1回実行（何度実行してもよい）。
+  lab_reader だけが SELECT できるポリシーを各表に追加する。データ・他ロールの見え方は変わらない。
+- 結果の `lab_reader_policy` がすべて true、`writable_policy` がすべて 0 なら成功。
+
 ### A-3. チームPCで監査を実行（10分）
 1. Python 3.11 以上と Git を入れ、リポジトリを取得してブランチ `claude/new-session-pnnp13` に切り替える。
 2. PowerShell で：

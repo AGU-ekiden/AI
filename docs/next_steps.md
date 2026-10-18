@@ -12,13 +12,15 @@
 
 ### A-1. 接続用ロールを作る（5分・編集不要）
 1. 左メニューの **SQL Editor**（`>_` のアイコン）→ 新しいクエリ。
-2. `docs/supabase_setup.sql` の中身を**そのまま全部**貼り付けて、**1回だけ** Run。
+2. `docs/supabase_setup.sql` の**最新版**の中身をそのまま全部貼り付けて Run。
 3. 結果に1行表示される：
-   - `reader_cannot_write_ok` `reader_can_read_ok` `writer_cannot_read_rkm_ok` `lab_owner_ok` が **4つとも true** なら成功。
+   - `reader_cannot_write_ok` `reader_can_read_ok` `writer_cannot_read_rkm_ok` `lab_owner_ok` `roles_not_privileged_ok` が **5つとも true** なら成功。
    - `lab_reader_pw` `lab_writer_pw` の2つのパスワードは**この時しか表示されない**ので、すぐパスワード管理などに保存。
      （英数字のみで接続文字列にそのまま使えます。チャットには貼らないでください）
 4. 「rkm スキーマがありません」と出たら別のプロジェクトです（何も作られていません）。
-   「role "lab_reader" already exists」と出たら作成済みです（2回目の実行。既存のものは変わっていません）。
+5. **何度実行してもかまいません**。既にロールがあれば権限を正しい状態に直し、パスワードを新しくします。
+   再実行すると前のパスワードは使えなくなるので、最後に表示された2つを保存してください。
+   （2026-10-19：旧版を2回実行すると「role "lab_reader" already exists」で止まる問題を修正）
 
 ### A-2. 接続文字列を作る（3分）
 1. 画面上部の **Connect** → 「Session pooler」の接続文字列（URI）をコピー。

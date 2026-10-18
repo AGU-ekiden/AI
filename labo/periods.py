@@ -39,9 +39,12 @@ class CutoffRule:
 
 
 CUTOFF_PRESETS = {
+    "g2_jul31": CutoffRule(2, 7, 31, "高2の7月31日終了時点（日本時間）"),
     "g2_end": CutoffRule(2, 3, 31, "高2年度末（3月31日終了時点・日本時間）"),
     "g2_aug31": CutoffRule(2, 8, 31, "高2の8月31日終了時点（日本時間）"),
 }
+# 利用者決定（2026-10-18）：主観測点は高2の7月31日終了時点
+DEFAULT_CUTOFF = "g2_jul31"
 
 
 @dataclass(frozen=True)

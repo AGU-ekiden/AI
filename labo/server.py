@@ -7,13 +7,13 @@
 from __future__ import annotations
 
 import csv
-import hmac
 import io
 import json
 import os
 import re
 import secrets
 import threading
+import time
 from collections import Counter
 from datetime import date
 from http import cookies
@@ -29,23 +29,28 @@ from .definitions import (
 )
 from .features import MISSING_LABELS, compute_person, make_context
 from .model import Dataset
-from .periods import CUTOFF_PRESETS
+from .periods import CUTOFF_PRESETS, DEFAULT_CUTOFF
 from .quality import REASON_LABELS, Options, select_runs
 from .store import Store, code_version, dataset_hash
+from .users import ROLE_LABELS, UserStore
 
 WEB = Path(__file__).parent / "web"
 STATIC = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"),
           "/style.css": ("style.css", "text/css")}
 MAX_BODY = 64 * 1024
 SESSION_COOKIE = "labo_session"
+SESSION_TTL_S = 12 * 3600
+WRITE_ROLES = {"admin", "editor"}
 
 
 class App:
-    def __init__(self, store: Store, dataset: Dataset, token: str):
+    def __init__(self, store: Store, dataset: Dataset, users: UserStore,
+                 secure_cookie: bool = False):
         self.store = store
         self.ds = dataset
-        self.token = token
-        self.sessions: set[str] = set()
+        self.users = users
+        self.secure_cookie = secure_cookie
+        self.sessions: dict[str, tuple[str, float]] = {}  # sid -> (user_id, 期限)
         self.cancel_flags: dict[str, threading.Event] = {}
         self.threads: dict[str, threading.Thread] = {}
         self.lock = threading.Lock()
@@ -125,7 +130,7 @@ class App:
     def overview(self) -> dict:
         defs = self.store.definitions()
         runs = self.store.list_runs()
-        q = self.quality("g2_end")
+        q = self.quality(DEFAULT_CUTOFF)
         held = sum(x["count"] for x in q["summary"] if x["decision"] == "held")
         latest = next((r for r in runs if r["state"] == "completed"), None)
         changes = None
@@ -139,7 +144,7 @@ class App:
             "code_version": code_version(),
             "cohorts": [c.to_dict() for c in builtin_cohorts()],
             "cutoffs": {k: v.label for k, v in CUTOFF_PRESETS.items()},
-            "default_cutoff": "g2_end",
+            "default_cutoff": DEFAULT_CUTOFF,
             "features": {"total": len(defs), "by_status": dict(Counter(d.review_status for d in defs))},
             "latest_run": latest, "runs": len(runs),
             "quality": {"held_rows": held, "entry_unknown": len(q["people"]["hs_entry_year_unknown"]),
@@ -239,7 +244,7 @@ class App:
         sample = synthetic.generate(seed=7, n_athletes=8)  # 常に小さな合成データ
         out = []
         for pid in sorted(sample.athletes)[:8]:
-            v = compute_person(sample, sample.athletes[pid], defs, CUTOFF_PRESETS["g2_end"])[0]
+            v = compute_person(sample, sample.athletes[pid], defs, CUTOFF_PRESETS[DEFAULT_CUTOFF])[0]
             out.append({"person_id": pid, "name": sample.athletes[pid].name, **v.to_dict()})
         return {"ref": ref, "dataset_label": sample.label, "rows": out}
 
@@ -284,9 +289,27 @@ def make_handler(app: App):
             m = c.get(SESSION_COOKIE)
             return m.value if m else None
 
-        def _authed(self) -> bool:
+        def _user(self) -> Optional[dict]:
             sid = self._sid()
-            return sid is not None and sid in app.sessions
+            entry = app.sessions.get(sid) if sid else None
+            if entry is None:
+                return None
+            uid, exp = entry
+            if time.time() > exp:
+                app.sessions.pop(sid, None)
+                return None
+            return app.users.get(uid)  # 無効化・役割変更を即時反映
+
+        def _authed(self) -> bool:
+            return self._user() is not None
+
+        def _cookie(self, value: str, max_age: Optional[int] = None) -> str:
+            c = f"{SESSION_COOKIE}={value}; HttpOnly; SameSite=Strict; Path=/"
+            if max_age is not None:
+                c += f"; Max-Age={max_age}"
+            if app.secure_cookie:
+                c += "; Secure"
+            return c
 
         def _body(self) -> dict:
             n = int(self.headers.get("Content-Length") or 0)
@@ -310,11 +333,14 @@ def make_handler(app: App):
             if not u.path.startswith("/api/"):
                 return self._json(404, {"error": "not found"})
             if u.path == "/api/session":
-                return self._json(200, {"authenticated": self._authed()})
+                user = self._user()
+                return self._json(200, {"authenticated": user is not None, "user": user and (
+                    user | {"role_label": ROLE_LABELS[user["role"]],
+                            "can_write": user["role"] in WRITE_ROLES})})
             if not self._authed():
                 return self._json(401, {"error": "ログインが必要です"})
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
-            cutoff = q.get("cutoff", "g2_end")
+            cutoff = q.get("cutoff", DEFAULT_CUTOFF)
             if cutoff not in CUTOFF_PRESETS:
                 return self._json(400, {"error": "観測締切の設定が不正です"})
             try:
@@ -389,25 +415,26 @@ def make_handler(app: App):
             try:
                 body = self._body()
                 if u.path == "/api/login":
-                    tok = body.get("token", "")
-                    if isinstance(tok, str) and hmac.compare_digest(tok.encode(), app.token.encode()):
-                        sid = secrets.token_urlsafe(32)
-                        app.sessions.add(sid)
-                        return self._json(200, {"ok": True}, {
-                            "Set-Cookie": f"{SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/"})
-                    return self._json(401, {"error": "トークンが違います"})
-                if not self._authed():
+                    user = app.users.authenticate(body.get("token", ""))
+                    if user is None:
+                        return self._json(401, {"error": "トークンが違うか、無効な利用者です"})
+                    sid = secrets.token_urlsafe(32)
+                    app.sessions[sid] = (user["user_id"], time.time() + SESSION_TTL_S)
+                    app.store.audit(f"{user['user_id']}:{user['name']}", "login", {})
+                    return self._json(200, {"ok": True}, {"Set-Cookie": self._cookie(sid, SESSION_TTL_S)})
+                user = self._user()
+                if user is None:
                     return self._json(401, {"error": "ログインが必要です"})
-                return self._route_post(u.path, body)
+                if u.path == "/api/logout":
+                    app.sessions.pop(self._sid(), None)
+                    return self._json(200, {"ok": True}, {"Set-Cookie": self._cookie("", 0)})
+                if user["role"] not in WRITE_ROLES and u.path != "/api/features/preview":
+                    return self._json(403, {"error": "閲覧のみの利用者は変更・実行できません"})
+                return self._route_post(u.path, body, f"{user['user_id']}:{user['name']}")
             except SpecError as e:
                 return self._json(400, {"error": str(e)})
 
-        def _route_post(self, path: str, body: dict):
-            actor = "local-user"
-            if path == "/api/logout":
-                app.sessions.discard(self._sid())
-                return self._json(200, {"ok": True}, {
-                    "Set-Cookie": f"{SESSION_COOKIE}=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/"})
+        def _route_post(self, path: str, body: dict, actor: str):
             if path == "/api/features":
                 d = app.store.create_definition(body, actor)
                 return self._json(201, d.to_dict())
@@ -422,7 +449,7 @@ def make_handler(app: App):
                 if not isinstance(refs, list) or not refs or len(refs) > 200 or \
                         not all(isinstance(r, str) for r in refs):
                     raise SpecError("特徴量を1つ以上選んでください")
-                cutoff = str(body.get("cutoff", "g2_end"))
+                cutoff = str(body.get("cutoff", DEFAULT_CUTOFF))
                 options = Options(require_published_by_cutoff=bool(body.get("strict_publication")))
                 plan = app.store.plan(app.ds, str(body.get("cohort", "")), cutoff, refs, options)
                 if path == "/api/runs/plan":
@@ -454,26 +481,25 @@ def make_handler(app: App):
     return Handler
 
 
-def load_token(data_dir: Path) -> tuple[str, Optional[Path]]:
-    tok = os.environ.get("LABO_TOKEN")
-    if tok:
-        return tok, None
+def bootstrap_admin(users: UserStore, data_dir: Path) -> Optional[Path]:
+    """利用者が一人もいなければ管理者を作り、トークンを data/.token（権限600）へ保存する。"""
+    if users.list():
+        return None
+    _, token = users.add("管理者", "admin")
     p = data_dir / ".token"
-    if p.exists():
-        return p.read_text().strip(), p
-    tok = secrets.token_urlsafe(24)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        f.write(tok)
-    return tok, p
+        f.write(token)
+    return p
 
 
-def build_server(host: str, port: int, data_dir: Path, token: Optional[str] = None):
-    store = Store(data_dir)
-    if token is None:
-        token, _ = load_token(data_dir)
-    app = App(store, synthetic.generate(), token)
+def build_server(host: str, port: int, data_dir: Path):
+    data_dir.mkdir(parents=True, exist_ok=True)
+    store = Store(data_dir, require_second_reviewer=os.environ.get(
+        "LABO_REQUIRE_SECOND_REVIEWER", "true").lower() != "false")
+    users = UserStore(data_dir)
+    secure = os.environ.get("LABO_SECURE_COOKIE", "false").lower() == "true"
+    app = App(store, synthetic.generate(), users, secure_cookie=secure)
     return ThreadingHTTPServer((host, port), make_handler(app)), app
 
 
@@ -481,15 +507,15 @@ def main() -> None:
     host = os.environ.get("LABO_HOST", "127.0.0.1")
     port = int(os.environ.get("LABO_PORT", "8765"))
     data_dir = Path(os.environ.get("LABO_DATA_DIR", "./data"))
-    _, token_path = load_token(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    token_path = bootstrap_admin(UserStore(data_dir), data_dir)
     srv, _ = build_server(host, port, data_dir)
     print(f"特徴量ラボ（合成データ）: http://{host}:{port}/")
     if token_path:
-        print(f"ログイントークンは {token_path} に保存されています（権限600）。")
-    else:
-        print("ログイントークンは環境変数 LABO_TOKEN の値です。")
+        print(f"初回起動のため管理者を作成しました。トークンは {token_path}（権限600）にあります。")
+        print("ログイン後はこのファイルを削除してかまいません。メンバー追加: python3 -m labo.users add --name 氏名 --role editor")
     if host not in ("127.0.0.1", "localhost", "::1"):
-        print("警告: ローカル以外で待ち受けています。公開しないでください。")
+        print("警告: ローカル以外で待ち受けています。HTTPSの内側でのみ運用し LABO_SECURE_COOKIE=true にしてください。")
     srv.serve_forever()
 
 

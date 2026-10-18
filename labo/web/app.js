@@ -2,7 +2,7 @@
 // 特徴量ラボ UI。データは textContent でのみ描画する（innerHTML は使わない）。
 
 const main = document.getElementById("main");
-const state = { view: "home", overview: null, selected: new Set(), resultRun: null, pollTimer: null };
+const state = { user: null, view: "home", overview: null, selected: new Set(), resultRun: null, pollTimer: null };
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -33,6 +33,10 @@ async function api(path, body) {
   return data;
 }
 
+function readOnlyNotice() {
+  return state.user && !state.user.can_write
+    ? h("div", { class: "notice" }, "閲覧のみの権限です。保存・状態変更・計算実行はできません。") : null;
+}
 function render(...nodes) { main.replaceChildren(...nodes); main.focus(); }
 function loading(msg) { render(h("p", { class: "loading", role: "status" }, msg || "読み込み中…")); }
 function errorBox(e) { return h("div", { class: "error", role: "alert" }, String(e.message || e)); }
@@ -59,6 +63,7 @@ function table(headers, rows) {
 // ---------- ログイン ----------
 function showLogin() {
   document.getElementById("nav").hidden = true;
+  document.getElementById("who").textContent = "";
   const input = h("input", { type: "password", id: "token", autocomplete: "off", required: true });
   const msg = h("div", { "aria-live": "polite" });
   const form = h("form", {
@@ -70,7 +75,7 @@ function showLogin() {
     },
   },
   h("h1", {}, "ログイン"),
-  h("p", { class: "muted" }, "起動時に案内されたトークン（data/.token または環境変数 LABO_TOKEN）を入力してください。"),
+  h("p", { class: "muted" }, "管理者から受け取った個人用トークンを入力してください（初回の管理者は data/.token）。トークンは他の人と共有しないでください。"),
   h("label", { for: "token" }, "アクセストークン"), input,
   h("div", { class: "row" }, h("button", { class: "primary", type: "submit" }, "ログイン")), msg);
   render(form);
@@ -91,12 +96,12 @@ async function viewHome() {
     h("div", { class: "grid" },
       stat(o.dataset.athletes, "人物数（データ版）"), stat(o.dataset.results, "結果行数"),
       stat(o.features.total, "特徴量定義数"), stat(o.runs, "計算実行数"),
-      stat(o.quality.held_rows, "保留中の行（高2年度末基準）"), stat(o.quality.entry_unknown, "入学年度不明の人物")),
+      stat(o.quality.held_rows, "保留中の行（既定締切基準）"), stat(o.quality.entry_unknown, "入学年度不明の人物")),
     h("div", { class: "card" }, h("dl", { class: "kv" },
       h("dt", {}, "データ"), h("dd", {}, o.dataset.label),
       h("dt", {}, "データ版ハッシュ"), h("dd", { class: "mono" }, o.dataset.hash),
       h("dt", {}, "コード版"), h("dd", { class: "mono" }, o.code_version),
-      h("dt", {}, "観測締切（初期案）"), h("dd", {}, o.cutoffs[o.default_cutoff] + "（利用者確認待ちの初期案）"),
+      h("dt", {}, "観測締切（既定）"), h("dd", {}, o.cutoffs[o.default_cutoff] + "（2026-10-18 利用者決定）"),
       h("dt", {}, "時点の扱い"), h("dd", {}, o.time_basis),
       h("dt", {}, "対象集団"), h("dd", {}, o.cohorts.map((c) => h("div", {}, `${c.label}（${c.ref}）— ${c.generalization_note}`))),
       h("dt", {}, "状態別の定義数"), h("dd", {}, Object.entries(o.features.by_status).map(([k, v]) => h("span", {}, statusTag(k), ` ${v} `))),
@@ -142,7 +147,7 @@ async function viewFeatures() {
   };
   [q, cat, st].forEach((el) => el.addEventListener("input", draw));
   render(h("h1", {}, "ファクター一覧"),
-    h("p", { class: "muted" }, "チェックした特徴量は「計算実行」で選択済みになります。重要度だけで自動採用はしません。"),
+    h("p", { class: "muted" }, "チェックした特徴量は「計算実行」で選択済みになります。重要度だけで自動採用はしません。利用者が作った定義を「計算可能」「研究で採用」にするのは、作成者以外のメンバーです。"),
     h("div", { class: "row" }, h("div", {}, h("label", { for: "fq" }, "検索"), q),
       h("div", {}, h("label", { for: "fcat" }, "カテゴリ"), cat), h("div", {}, h("label", { for: "fst" }, "状態"), st)),
     list);
@@ -261,7 +266,7 @@ async function viewCreate() {
   h("label", { class: "check", for: "c-qonly" }, qualityOnly, "品質表示専用（将来のモデル入力から外す）"),
   h("h3", {}, "保存される宣言的定義"), specOut,
   h("div", { class: "row" }, h("button", { class: "primary", type: "submit" }, "提案として保存")), msg);
-  render(h("h1", {}, "特徴量作成"),
+  render(h("h1", {}, "特徴量作成"), readOnlyNotice(),
     h("div", { class: "card" }, h("h2", {}, "AIによる定義案"),
       h("p", {}, "未実装（段階4）。外部AIへの送信は既定で無効で、実在選手のデータは送信しません。"),
       h("p", { class: "muted" }, "AIの案も、この手動フォームと同じ許可済み演算の定義に変換され、利用者確認を経るまで実行されません。")),
@@ -306,7 +311,7 @@ async function viewRun() {
       watchRun(r.run_id, planBox);
     } catch (e) { planBox.replaceChildren(errorBox(e)); }
   };
-  render(h("h1", {}, "計算実行"),
+  render(h("h1", {}, "計算実行"), readOnlyNotice(),
     h("div", { class: "card" },
       h("label", { for: "r-cohort" }, "対象集団"), cohort,
       h("label", { for: "r-cutoff" }, "観測締切"), cutoff,
@@ -454,7 +459,8 @@ async function viewHistory() {
 // ---------- 品質・保留 ----------
 async function viewQuality() {
   loading();
-  const cutoffSel = h("select", { id: "q-cut" }, h("option", { value: "g2_end" }, "高2年度末"), h("option", { value: "g2_aug31" }, "高2の8月31日"));
+  const o = await api("/api/overview");
+  const cutoffSel = h("select", { id: "q-cut" }, Object.entries(o.cutoffs).map(([k, v]) => h("option", { value: k, selected: k === o.default_cutoff }, v)));
   const out = h("div", {});
   const draw = async () => {
     out.replaceChildren(h("p", { class: "loading" }, "読み込み中…"));
@@ -510,6 +516,8 @@ async function go(view) {
 async function start() {
   const s = await api("/api/session");
   if (!s.authenticated) return showLogin();
+  state.user = s.user;
+  document.getElementById("who").textContent = `${s.user.name}（${s.user.role_label}）`;
   document.getElementById("nav").hidden = false;
   if (!state.overview) { try { setBadge((await api("/api/overview")).dataset); } catch (_) { /* 表示は各画面で */ } }
   go(state.view);

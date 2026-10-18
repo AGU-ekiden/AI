@@ -11,6 +11,7 @@ from labo.definitions import SpecError
 from labo.quality import Options
 from labo.server import WEB, build_server
 from labo.store import Store
+from labo.users import UserStore
 
 ALL = None
 
@@ -64,15 +65,17 @@ class StoreTests(unittest.TestCase):
             self._plan([d.ref])
         with self.assertRaises(SpecError):
             self.store.change_status(d.ref, "計算可能", "飛び級", "t")
-        for to in ("定義確認", "テスト済み", "計算可能"):
+        for to in ("定義確認", "テスト済み"):
             self.store.change_status(d.ref, to, "確認", "t")
+        self.store.change_status(d.ref, "計算可能", "別メンバー確認", "u2:other")
         self.assertEqual(self._plan([d.ref])["feature_refs"], [d.ref])
 
     def test_new_version_does_not_change_past_run(self):
         spec = {"op": "min", "event": "5000m", "window": {"kind": "recent_days", "days": 365}}
         d1 = self.store.create_definition({"feature_id": "my_best", "spec": spec}, "t")
-        for to in ("定義確認", "テスト済み", "計算可能"):
+        for to in ("定義確認", "テスト済み"):
             self.store.change_status(d1.ref, to, "ok", "t")
+        self.store.change_status(d1.ref, "計算可能", "ok", "u2:other")
         p1 = self._plan([d1.ref])
         self.store.prepare_run(p1, "t")
         self.store.execute(self.ds, p1["run_id"])
@@ -85,7 +88,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.definition(d1.ref).spec, spec)
 
     def test_cohort_plan_excludes_future_information(self):
-        plan = self._plan(cohort="national_by_cutoff@1")
+        plan = self.store.plan(self.ds, "national_by_cutoff@1", "g2_end", _refs(self.store), Options())
         self.assertNotIn("SYN9005", plan["included"])
         self.assertIn("SYN9005", plan["excluded"]["no_national_by_cutoff"])
         self.assertIn("SYN9001", plan["excluded"]["hs_entry_year_unknown"])
@@ -105,8 +108,11 @@ class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.token = "test-token-should-not-leak-123"
-        cls.srv, cls.app = build_server("127.0.0.1", 0, Path(cls.tmp.name), cls.token)
+        users = UserStore(Path(cls.tmp.name))
+        cls.admin, cls.token = users.add("管理者", "admin")
+        cls.editor2, cls.token2 = users.add("研究担当B", "editor")
+        cls.viewer, cls.vtoken = users.add("閲覧者", "viewer")
+        cls.srv, cls.app = build_server("127.0.0.1", 0, Path(cls.tmp.name))
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
 
@@ -130,8 +136,8 @@ class ServerTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, e.headers, e.read()
 
-    def login(self):
-        code, headers, _ = self.req("/api/login", {"token": self.token})
+    def login(self, token=None):
+        code, headers, _ = self.req("/api/login", {"token": token or self.token})
         self.assertEqual(code, 200)
         return headers["Set-Cookie"].split(";")[0]
 
@@ -140,6 +146,38 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("/api/overview", cookie="labo_session=forged")[0], 401)
         self.assertEqual(self.req("/api/login", {"token": "wrong"})[0], 401)
         self.assertEqual(self.req("/api/runs", {"features": ["x"]})[0], 401)
+        self.assertEqual(self.req("/api/login", {"token": self.token + "x"})[0], 401)
+
+    def test_roles_and_disabled_users(self):
+        vc = self.login(self.vtoken)
+        self.assertEqual(self.req("/api/overview", cookie=vc)[0], 200)
+        code, _, _ = self.req("/api/features", {"feature_id": "v", "spec": {
+            "op": "min", "event": "5000m", "window": {"kind": "hs"}}}, vc)
+        self.assertEqual(code, 403)
+        me = json.loads(self.req("/api/session", cookie=vc)[2])["user"]
+        self.assertEqual((me["role"], me["can_write"]), ("viewer", False))
+        self.app.users.set_disabled(self.viewer["user_id"], True)
+        try:
+            self.assertEqual(self.req("/api/overview", cookie=vc)[0], 401)
+            self.assertEqual(self.req("/api/login", {"token": self.vtoken})[0], 401)
+        finally:
+            self.app.users.set_disabled(self.viewer["user_id"], False)
+
+    def test_second_member_must_approve_user_definitions(self):
+        a, b = self.login(), self.login(self.token2)
+        code, _, body = self.req("/api/features", {"feature_id": "peer_check", "spec": {
+            "op": "min", "event": "1500m", "window": {"kind": "hs"}}}, a)
+        self.assertEqual(code, 201)
+        ref = json.loads(body)["ref"]
+        self.assertIn(self.admin["user_id"], json.loads(body)["author"])
+        for to in ("定義確認", "テスト済み"):
+            self.assertEqual(self.req("/api/features/status", {"ref": ref, "to": to, "comment": "c"}, a)[0], 200)
+        self.assertEqual(self.req("/api/features/status", {"ref": ref, "to": "計算可能", "comment": "c"}, a)[0], 400)
+        self.assertEqual(self.req("/api/features/status", {"ref": ref, "to": "計算可能", "comment": "c"}, b)[0], 200)
+        audit = (Path(self.tmp.name) / "audit.jsonl").read_text()
+        self.assertIn("研究担当B", audit)
+        for t in (self.token, self.token2, self.vtoken):
+            self.assertNotIn(t, audit)
 
     def test_csrf_header_required(self):
         cookie = self.login()
@@ -150,6 +188,7 @@ class ServerTests(unittest.TestCase):
             code, _, body = self.req(path)
             self.assertEqual(code, 200)
             self.assertNotIn(self.token.encode(), body)
+        self.assertNotIn(self.token, (Path(self.tmp.name) / "users.json").read_text())
         for f in WEB.iterdir():
             self.assertNotIn(b"service_role", f.read_bytes())
         self.assertEqual(self.req("/../data/.token")[0], 404)
@@ -170,7 +209,7 @@ class ServerTests(unittest.TestCase):
         code, headers, csv_body = self.req(f"/api/runs/{run_id}/export.csv", cookie=cookie)
         self.assertEqual(code, 200)
         self.assertIn("合成データ", csv_body.decode("utf-8-sig").splitlines()[0])
-        code, _, body = self.req("/api/persons/SYN9004", cookie=cookie)
+        code, _, body = self.req("/api/persons/SYN9004?cutoff=g2_end", cookie=cookie)
         reasons = {r["decision"]["reason"] for r in json.loads(body)["results"]}
         self.assertIn("date_spans_cutoff", reasons)
         self.assertEqual(self.req("/api/quality", cookie=cookie)[0], 200)

@@ -19,7 +19,7 @@ from typing import Callable, Optional
 from . import cohorts as cohorts_mod
 from .catalog import builtin_definitions
 from .definitions import (
-    RUNNABLE_STATUSES, TRANSITIONS, FeatureDefinition, SpecError, validate_spec,
+    RUNNABLE_STATUSES, SECOND_REVIEW_STATUSES, TRANSITIONS, FeatureDefinition, SpecError, validate_spec,
 )
 from .features import compute_person, make_context
 from .model import Dataset
@@ -56,8 +56,10 @@ def _now() -> str:
 
 
 class Store:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, require_second_reviewer: bool = True):
         self.root = Path(root)
+        # 利用者定義を「計算可能／研究で採用」にする人は作成者と別人であること（チームでの相互確認）
+        self.require_second_reviewer = require_second_reviewer
         (self.root / "definitions").mkdir(parents=True, exist_ok=True)
         (self.root / "runs").mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -138,6 +140,9 @@ class Store:
             raise SpecError("定義が見つかりません")
         if to not in TRANSITIONS.get(d.review_status, set()):
             raise SpecError(f"{d.review_status} から {to} へは変更できません")
+        if (self.require_second_reviewer and to in SECOND_REVIEW_STATUSES and not d.builtin
+                and d.author.split(":")[0] == actor.split(":")[0]):
+            raise SpecError(f"「{to}」への変更は作成者以外のメンバーが行ってください（相互確認）")
         rv = {"kind": "status", "ref": ref, "from": d.review_status, "to": to,
               "comment": comment[:2000], "actor": actor, "at": _now()}
         with self._lock, open(self._review_path(), "a", encoding="utf-8") as f:

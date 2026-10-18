@@ -1,3 +1,12 @@
+test_editions (tests.test_decisions.HakoneOutcome.test_editions) ... ok
+test_future_race_not_visible_before_it_happens (tests.test_decisions.HakoneOutcome.test_future_race_not_visible_before_it_happens) ... ok
+test_outside_window_ignored (tests.test_decisions.HakoneOutcome.test_outside_window_ignored) ... ok
+test_reference_and_unconfirmed_not_counted (tests.test_decisions.HakoneOutcome.test_reference_and_unconfirmed_not_counted) ... ok
+test_thresholds (tests.test_decisions.HakoneOutcome.test_thresholds) ... ok
+test_untracked_generation_is_not_zero (tests.test_decisions.HakoneOutcome.test_untracked_generation_is_not_zero) ... ok
+test_default_and_dates (tests.test_decisions.July31Cutoff.test_default_and_dates) ... ok
+test_interhigh_spanning_cutoff_is_held (tests.test_decisions.July31Cutoff.test_interhigh_spanning_cutoff_is_held) ... ok
+test_window_edges_at_july31 (tests.test_decisions.July31Cutoff.test_window_edges_at_july31) ... ok
 test_dns_dnf_blank_failed_zero_are_distinct (tests.test_features.EventsAndRecords.test_dns_dnf_blank_failed_zero_are_distinct) ... ok
 test_duplicate_listing_does_not_inflate (tests.test_features.EventsAndRecords.test_duplicate_listing_does_not_inflate) ... ok
 test_ekiden_self_leg_vs_pass_time (tests.test_features.EventsAndRecords.test_ekiden_self_leg_vs_pass_time) ... ok
@@ -28,6 +37,8 @@ test_spec_rejects_code_and_sql (tests.test_features.SafetyAndScope.test_spec_rej
 test_csrf_header_required (tests.test_store_server.ServerTests.test_csrf_header_required) ... ok
 test_end_to_end_run_and_export (tests.test_store_server.ServerTests.test_end_to_end_run_and_export) ... ok
 test_malicious_definition_input_rejected (tests.test_store_server.ServerTests.test_malicious_definition_input_rejected) ... ok
+test_roles_and_disabled_users (tests.test_store_server.ServerTests.test_roles_and_disabled_users) ... ok
+test_second_member_must_approve_user_definitions (tests.test_store_server.ServerTests.test_second_member_must_approve_user_definitions) ... ok
 test_static_assets_do_not_contain_secrets (tests.test_store_server.ServerTests.test_static_assets_do_not_contain_secrets) ... ok
 test_unauthenticated_and_forged_sessions_rejected (tests.test_store_server.ServerTests.test_unauthenticated_and_forged_sessions_rejected) ... ok
 test_cohort_plan_excludes_future_information (tests.test_store_server.StoreTests.test_cohort_plan_excludes_future_information) ... ok
@@ -36,5 +47,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 38 tests in 1.105s
+Ran 49 tests in 1.857s
 OK

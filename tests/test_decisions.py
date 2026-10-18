@@ -1,0 +1,83 @@
+"""2026-10-18 の利用者決定（7/31締切・箱根の成果定義）に関するテスト。"""
+import unittest
+from datetime import date as D
+
+from labo.outcomes import (
+    NEGATIVE_CONFIRMED, POSITIVE, TRACKING, UNKNOWN, HakoneLegResult, OutcomeDefinition, label_person,
+)
+from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF
+from labo.model import IDENTITY_UNCONFIRMED
+
+from .helpers import ds_of, res, values
+
+JUL = CUTOFF_PRESETS["g2_jul31"]
+OD = OutcomeDefinition()
+
+
+class July31Cutoff(unittest.TestCase):
+    def test_default_and_dates(self):
+        self.assertEqual(DEFAULT_CUTOFF, "g2_jul31")
+        self.assertEqual(JUL.resolve(2020), D(2021, 7, 31))
+
+    def test_interhigh_spanning_cutoff_is_held(self):
+        rows = [res("A", D(2020, 9, 1), 950), res("A", D(2021, 5, 1), 930),
+                res("A", None, 900, start=D(2021, 7, 28), end=D(2021, 8, 1)),
+                res("A", D(2021, 8, 1), 890)]
+        v = values(ds_of(rows), rule=JUL)
+        self.assertEqual(v["best_5000_s"].value, 930)
+        self.assertEqual(v["grade2_best_5000_s"].period_end, "2021-07-31")
+        self.assertIn("期間の長さが異なる", v["grade1_to_grade2_improvement_s"].note)
+        rows[2] = res("A", None, 900, start=D(2021, 7, 28), end=D(2021, 8, 1), performed=D(2021, 7, 30))
+        self.assertEqual(values(ds_of(rows), rule=JUL)["best_5000_s"].value, 900)
+
+    def test_window_edges_at_july31(self):
+        rows = [res("A", D(2020, 8, 1), 880), res("A", D(2020, 7, 31), 870), res("A", D(2021, 7, 31), 900)]
+        v = values(ds_of(rows), rule=JUL)
+        self.assertEqual(v["best_5000_365d_s"].value, 880)   # 2020-08-01〜2021-07-31
+        self.assertEqual(v["days_since_last_5000"].value, 0)
+
+
+def leg(pid, fy, leg_no, rank, **kw):
+    return HakoneLegResult(pid, fy, D(fy + 1, 1, 2 if leg_no <= 5 else 3), leg_no, rank,
+                           source_ref=f"{pid}-{fy}-{leg_no}", **kw)
+
+
+class HakoneOutcome(unittest.TestCase):
+    # 高校入学2018年度 → 対象大会は2021〜2024年度（2022〜2025年1月）
+    def lab(self, legs, entry=2018, as_of=D(2026, 10, 18), complete=frozenset(range(2015, 2026)),
+            linked=True):
+        return label_person("A", entry, legs, definition=OD, as_of=as_of,
+                            complete_editions=set(complete), linkage_checked=linked)
+
+    def test_editions(self):
+        self.assertEqual(OD.edition_fys(2018), [2021, 2022, 2023, 2024])
+
+    def test_thresholds(self):
+        self.assertEqual(self.lab([leg("A", 2022, 3, 5)]).label, POSITIVE)
+        self.assertEqual(self.lab([leg("A", 2022, 3, 6)]).label, NEGATIVE_CONFIRMED)
+        r = self.lab([leg("A", 2023, 8, 2)])
+        self.assertEqual((r.label, r.outbound_top, r.return_top), (POSITIVE, False, True))
+        self.assertEqual(self.lab([leg("A", 2023, 8, 3)]).label, NEGATIVE_CONFIRMED)
+
+    def test_reference_and_unconfirmed_not_counted(self):
+        r = self.lab([leg("A", 2022, 1, 1, reference_only=True)])
+        self.assertEqual((r.label, r.reason), (NEGATIVE_CONFIRMED, "参考記録のみあり"))
+        self.assertEqual(self.lab([leg("A", 2022, 1, 1, identity=IDENTITY_UNCONFIRMED)]).label, UNKNOWN)
+
+    def test_outside_window_ignored(self):
+        self.assertEqual(self.lab([leg("A", 2025, 1, 1)]).label, NEGATIVE_CONFIRMED)
+
+    def test_untracked_generation_is_not_zero(self):
+        r = self.lab([], entry=2022)  # 対象 2025〜2028年度
+        self.assertEqual(r.label, TRACKING)
+        self.assertEqual(self.lab([], linked=False).label, UNKNOWN)
+        self.assertEqual(self.lab([], complete={2021, 2022, 2023}).label, UNKNOWN)
+        self.assertEqual(self.lab([], entry=None).label, UNKNOWN)
+
+    def test_future_race_not_visible_before_it_happens(self):
+        r = self.lab([leg("A", 2024, 2, 1)], as_of=D(2024, 12, 31))
+        self.assertEqual(r.label, TRACKING)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -13,6 +13,8 @@ from typing import Any, Optional
 STATUSES = ["提案", "定義確認", "テスト済み", "計算可能", "研究で採用", "保留", "廃止"]
 # 計算実行に使える状態（未承認の定義は実行しない）
 RUNNABLE_STATUSES = {"計算可能", "研究で採用"}
+# 作成者本人以外の承認が必要な状態
+SECOND_REVIEW_STATUSES = {"計算可能", "研究で採用"}
 # 合成データでのプレビューが許される状態（利用者が定義を確認済み）
 PREVIEWABLE_STATUSES = {"定義確認", "テスト済み", "計算可能", "研究で採用"}
 TRANSITIONS = {

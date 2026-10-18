@@ -4,8 +4,9 @@ test_window_edges_at_august31 (tests.test_decisions.August31Cutoff.test_window_e
 test_editions (tests.test_decisions.HakoneOutcome.test_editions) ... ok
 test_future_race_not_visible_before_it_happens (tests.test_decisions.HakoneOutcome.test_future_race_not_visible_before_it_happens) ... ok
 test_outside_window_ignored (tests.test_decisions.HakoneOutcome.test_outside_window_ignored) ... ok
-test_reference_and_unconfirmed_not_counted (tests.test_decisions.HakoneOutcome.test_reference_and_unconfirmed_not_counted) ... ok
+test_student_alliance_counted_by_equivalent_rank (tests.test_decisions.HakoneOutcome.test_student_alliance_counted_by_equivalent_rank) ... ok
 test_thresholds (tests.test_decisions.HakoneOutcome.test_thresholds) ... ok
+test_unconfirmed_identity_not_counted (tests.test_decisions.HakoneOutcome.test_unconfirmed_identity_not_counted) ... ok
 test_untracked_generation_is_not_zero (tests.test_decisions.HakoneOutcome.test_untracked_generation_is_not_zero) ... ok
 test_dates (tests.test_decisions.July31CutoffOption.test_dates) ... ok
 test_interhigh_spanning_cutoff_is_held (tests.test_decisions.July31CutoffOption.test_interhigh_spanning_cutoff_is_held) ... ok
@@ -50,5 +51,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 52 tests in 1.816s
+Ran 53 tests in 1.772s
 OK

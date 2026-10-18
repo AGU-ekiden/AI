@@ -515,7 +515,8 @@ def main() -> None:
         print(f"初回起動のため管理者を作成しました。トークンは {token_path}（権限600）にあります。")
         print("ログイン後はこのファイルを削除してかまいません。メンバー追加: python3 -m labo.users add --name 氏名 --role editor")
     if host not in ("127.0.0.1", "localhost", "::1"):
-        print("警告: ローカル以外で待ち受けています。HTTPSの内側でのみ運用し LABO_SECURE_COOKIE=true にしてください。")
+        print("注意: ローカル以外で待ち受けています。VPNのアドレスだけで待ち受け、"
+              "Windowsファイアウォールで VPN 以外からの接続を拒否してください。インターネットへ公開しないでください。")
     srv.serve_forever()
 
 

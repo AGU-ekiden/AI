@@ -256,11 +256,12 @@ class SafetyAndScope(unittest.TestCase):
         self.assertEqual(({p for p, _ in tr}, {p for p, _ in te}), ({"A"}, {"B"}))
 
     def test_adapter_queries_are_readonly(self):
-        from labo.adapters.rkm_readonly import AUDIT_QUERIES, assert_readonly_sql
-        for sql in AUDIT_QUERIES.values():
+        from labo.adapters.rkm_readonly import AUDIT_QUERIES, SAFETY_QUERIES, assert_readonly_sql
+        for sql in list(AUDIT_QUERIES.values()) + list(SAFETY_QUERIES.values()):
             assert_readonly_sql(sql)
         for sql in ("DELETE FROM rkm.records", "SELECT 1; DROP TABLE rkm.records",
-                    "WITH x AS (SELECT 1) UPDATE rkm.athletes SET name='x'", "TRUNCATE rkm.records"):
+                    "WITH x AS (SELECT 1) UPDATE rkm.athletes SET name='x'", "TRUNCATE rkm.records",
+                    "SELECT 'a'; DELETE FROM rkm.records", "SELECT 1 WHERE 'x'='x' OR 1=1; DROP TABLE t"):
             with self.assertRaises(ValueError):
                 assert_readonly_sql(sql)
 

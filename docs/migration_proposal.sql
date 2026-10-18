@@ -51,4 +51,4 @@
 --   ＝ブラウザからは読めない。アクセスはアプリのサーバー（lab_writer 接続）経由のみ。
 --   チームの認証・役割はアプリ側（labo/users.py）で行う。service role 鍵は使わない。
 -- ALTER TABLE lab.feature_values ENABLE ROW LEVEL SECURITY;   -- 他の表も同様
--- 成果ラベル用（将来）：lab.outcome_definitions（hakone_leg_top@1 等）/ lab.outcome_labels
+-- 成果ラベル用（将来）：lab.outcome_definitions（hakone_leg_top@2 等）/ lab.outcome_labels

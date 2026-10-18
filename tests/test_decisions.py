@@ -86,9 +86,22 @@ class HakoneOutcome(unittest.TestCase):
         self.assertEqual((r.label, r.outbound_top, r.return_top), (POSITIVE, False, True))
         self.assertEqual(self.lab([leg("A", 2023, 8, 3)]).label, NEGATIVE_CONFIRMED)
 
-    def test_reference_and_unconfirmed_not_counted(self):
-        r = self.lab([leg("A", 2022, 1, 1, reference_only=True)])
+    def test_student_alliance_counted_by_equivalent_rank(self):
+        self.assertEqual(OD.ref, "hakone_leg_top@2")
+        r = self.lab([leg("A", 2022, 1, None, reference_only=True, reference_rank=4)])
+        self.assertEqual((r.label, r.outbound_top), (POSITIVE, True))
+        r = self.lab([leg("A", 2022, 7, None, reference_only=True, reference_rank=3)])
         self.assertEqual((r.label, r.reason), (NEGATIVE_CONFIRMED, "参考記録のみあり"))
+        # 相当順位が未確認なら未達成と確定しない
+        self.assertEqual(self.lab([leg("A", 2022, 1, None, reference_only=True)]).label, UNKNOWN)
+        # v1（参考記録を含めない）も再現できる
+        v1 = OutcomeDefinition(version=1, include_reference=False)
+        r1 = label_person("A", 2018, [leg("A", 2022, 1, None, reference_only=True, reference_rank=4)],
+                          definition=v1, as_of=D(2026, 10, 18),
+                          complete_editions=set(range(2015, 2026)), linkage_checked=True)
+        self.assertEqual(r1.label, NEGATIVE_CONFIRMED)
+
+    def test_unconfirmed_identity_not_counted(self):
         self.assertEqual(self.lab([leg("A", 2022, 1, 1, identity=IDENTITY_UNCONFIRMED)]).label, UNKNOWN)
 
     def test_outside_window_ignored(self):

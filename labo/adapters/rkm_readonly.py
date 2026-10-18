@@ -63,28 +63,66 @@ AUDIT_QUERIES: dict[str, str] = {
 }
 
 
+_LITERAL = re.compile(r"'(?:[^']|'')*'")
+
+
 def assert_readonly_sql(sql: str) -> None:
-    head = sql.lstrip().split(None, 1)[0].lower()
-    if head not in ("select", "with") or FORBIDDEN.search(sql) or ";" in sql.strip().rstrip(";"):
+    code = _LITERAL.sub("''", sql)  # 文字列リテラル内（'INSERT' 等の権限名）は判定対象外
+    head = code.lstrip().split(None, 1)[0].lower()
+    if head not in ("select", "with") or FORBIDDEN.search(code) or ";" in code.strip().rstrip(";"):
         raise ValueError("読み取り専用の単一 SELECT 以外は実行しません")
 
 
-def run_audit(dsn_env: str = "RKM_READONLY_DSN") -> dict:  # pragma: no cover - 実DB未接続
-    """承認後に手元で実行する読み取り専用監査。結果に秘密情報は含めない。"""
+# 実行前の安全確認：書き込みできる接続（postgres 等）なら監査を中止する
+SAFETY_QUERIES: dict[str, str] = {
+    "current_user": "SELECT current_user",
+    "read_only_default": "SELECT current_setting('default_transaction_read_only')",
+    "rkm_exists": "SELECT count(*) FROM pg_namespace WHERE nspname = 'rkm'",
+    "can_write_rkm": (
+        "SELECT count(*) FROM information_schema.tables t WHERE t.table_schema = 'rkm' "
+        "AND t.table_type = 'BASE TABLE' AND (has_table_privilege(current_user, "
+        "quote_ident(t.table_schema) || '.' || quote_ident(t.table_name), 'INSERT') OR "
+        "has_table_privilege(current_user, quote_ident(t.table_schema) || '.' || "
+        "quote_ident(t.table_name), 'UPDATE') OR has_table_privilege(current_user, "
+        "quote_ident(t.table_schema) || '.' || quote_ident(t.table_name), 'DELETE'))"),
+}
+
+
+class UnsafeConnection(RuntimeError):
+    pass
+
+
+def run_audit(dsn_env: str = "RKM_READONLY_DSN") -> dict:  # pragma: no cover - 実DBが必要
+    """読み取り専用監査。結果に氏名・接続情報・秘密は含めない。"""
     dsn = os.environ.get(dsn_env)
     if not dsn:
-        raise RuntimeError(f"{dsn_env} が未設定です（接続は承認後）")
-    import psycopg  # 承認後に導入する依存
+        raise RuntimeError(f"環境変数 {dsn_env} が未設定です")
+    import psycopg  # requirements-db.txt
 
-    timeout = int(os.environ.get("RKM_STATEMENT_TIMEOUT_MS", "15000"))
-    out: dict = {}
-    with psycopg.connect(dsn) as conn:
+    timeout = int(os.environ.get("RKM_STATEMENT_TIMEOUT_MS", "60000"))
+    out: dict = {"safety": {}, "results": {}, "errors": {}}
+    with psycopg.connect(dsn, connect_timeout=15) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(timeout),))
-            for name, sql in AUDIT_QUERIES.items():
+            for name, sql in SAFETY_QUERIES.items():
                 assert_readonly_sql(sql)
                 cur.execute(sql)
-                out[name] = cur.fetchmany(1000)
+                out["safety"][name] = cur.fetchone()[0]
+            if out["safety"]["rkm_exists"] != 1:
+                raise UnsafeConnection("rkm スキーマが見つかりません（接続先のプロジェクトを確認してください）")
+            if out["safety"]["can_write_rkm"] != 0:
+                raise UnsafeConnection(
+                    f"接続ユーザー {out['safety']['current_user']} は rkm に書き込めます。"
+                    "lab_reader で接続してください（監査を中止しました）")
+            for name, sql in AUDIT_QUERIES.items():
+                assert_readonly_sql(sql)
+                try:
+                    cur.execute(sql)
+                    out["results"][name] = cur.fetchmany(1000)
+                except psycopg.Error as e:  # 1つの失敗で全体を止めない
+                    conn.rollback()
+                    out["errors"][name] = type(e).__name__ + ": " + str(e).splitlines()[0]
+                    cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(timeout),))
         conn.rollback()
     return out

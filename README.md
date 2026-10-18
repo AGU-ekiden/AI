@@ -16,21 +16,22 @@
 - Web画面7種：研究トップ／ファクター一覧／特徴量作成／計算実行／結果確認／実験履歴／品質・保留
 - CSVエクスポート（合成データである旨を先頭行に明記）
 - チーム利用：個人別トークン、役割（管理者／研究担当／閲覧のみ）、操作者の記録、作成者以外による承認
-- 成果ラベル定義 `hakone_leg_top@1`（往路区間5位以内／復路区間2位以内）のラベル付け部品。予測はしない
+- 成果ラベル定義 `hakone_leg_top@2`（往路区間5位以内／復路区間2位以内、学生連合は相当順位で含む）のラベル付け部品。予測はしない
 
 ## セットアップ
 
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（52件）
+python3 -m unittest discover -s tests -t .   # テスト（53件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```
 
 - 初回起動時に管理者が作られ、そのトークンが `data/.token`（権限600）に保存されます。ログイン後は削除して構いません。
 - 役割：`admin`（管理者）／`editor`（研究担当：定義作成・判断記録・計算実行）／`viewer`（閲覧のみ）。
-- 既定は `127.0.0.1` のみで待ち受けます。外部公開しないでください。
+- 既定は `127.0.0.1` のみで待ち受けます。チームで使うときはチームPCで `LABO_HOST` に VPN のアドレスを指定します。インターネットへは公開しないでください。
+- 実DBの監査（段階2）：`pip install -r requirements-db.txt` → `RKM_READONLY_DSN` を設定 → `python scripts/run_audit.py`（docs/next_steps.md）。
 - 環境変数の見本は `.env.example`（秘密値は含みません）。`data/` は git 管理外です。
 
 ## 構成
@@ -49,7 +50,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 | `labo/server.py`, `labo/web/` | ローカルWeb（認証必須） |
 | `labo/ekiden.py` | 駅伝本人区間（フェーズ2の最小部品） |
 | `labo/evaluation.py` | 将来の評価用ラベル・分割の土台（予測は未実装） |
-| `labo/outcomes.py` | 成果ラベル hakone_leg_top@1（特徴量・母集団には渡さない） |
+| `labo/outcomes.py` | 成果ラベル hakone_leg_top@2（特徴量・母集団には渡さない） |
 | `labo/users.py` | チーム利用者の管理（CLI） |
 | `labo/adapters/rkm_readonly.py` | rkm 読み取り専用監査（**未接続・未検証**） |
 

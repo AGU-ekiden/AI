@@ -55,6 +55,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 
 ## ドキュメント
 
+- [docs/next_steps.md](docs/next_steps.md) — 次回やること（利用者側／Claude側／確認待ち）
 - [docs/decisions.md](docs/decisions.md) — 利用者の決定事項（締切・チーム利用・推奨構成・成果定義）
 - [docs/supabase_setup.sql](docs/supabase_setup.sql) — 推奨構成の接続用ロール（利用者が実行する案）
 - [docs/plan.md](docs/plan.md) — 理解した目的・最小構成・データ品質の懸念・実装順序・確認事項・実スキーマ対応表

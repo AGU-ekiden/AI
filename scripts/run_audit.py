@@ -17,6 +17,14 @@ sys.path.insert(0, str(ROOT))
 from labo.adapters.rkm_readonly import UnsafeConnection, run_audit  # noqa: E402
 
 
+HINTS = [
+    ("does not exist", "接続文字列の最後が「:5432/postgres」になっているか確認してください（データベース名は postgres）。"),
+    ("password authentication failed", "パスワードが違います。supabase_setup.sql を最後に実行したときの lab_reader_pw を使ってください。"),
+    ("Tenant or user not found", "ユーザー名が「lab_reader.<プロジェクトID>」の形か、Connect 画面の文字列を使っているか確認してください。"),
+    ("timeout", "ネットワークで5432番ポートが遮断されている可能性があります。別の回線で試してください。"),
+]
+
+
 def main() -> int:
     try:
         report = run_audit()
@@ -24,7 +32,11 @@ def main() -> int:
         print("中止:", e)
         return 2
     except Exception as e:  # noqa: BLE001 - 接続文字列を出さないよう種類と1行目だけ表示
-        print("失敗:", type(e).__name__, str(e).splitlines()[0] if str(e) else "")
+        msg = str(e)
+        print("失敗:", type(e).__name__, msg.splitlines()[0] if msg else "")
+        for key, hint in HINTS:
+            if key in msg:
+                print("ヒント:", hint)
         return 1
     report["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out = ROOT / "data" / "audit_report.json"

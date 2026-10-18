@@ -98,6 +98,12 @@ def run_audit(dsn_env: str = "RKM_READONLY_DSN") -> dict:  # pragma: no cover - 
     if not dsn:
         raise RuntimeError(f"環境変数 {dsn_env} が未設定です")
     import psycopg  # requirements-db.txt
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    # Supabase のデータベース名は postgres。末尾の /postgres が抜けると
+    # ユーザー名（lab_reader）がデータベース名として使われ接続に失敗するため補う。
+    if not conninfo_to_dict(dsn).get("dbname"):
+        dsn = make_conninfo(dsn, dbname="postgres")
 
     timeout = int(os.environ.get("RKM_STATEMENT_TIMEOUT_MS", "60000"))
     out: dict = {"safety": {}, "results": {}, "errors": {}}

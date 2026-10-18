@@ -6,7 +6,7 @@
 |---|---|---|
 | 15特徴量の計算（合成データ） | 実行確認済み | tests/test_features.py |
 | 行単位の品質判定（採用/除外/保留） | 実行確認済み | 同上 |
-| 締切・学年・窓（既定 高2の7/31／高2年度末／高2の8/31） | 承認済み・実行確認済み | tests/test_decisions.py（7/31は利用者決定） |
+| 締切・学年・窓（既定 高2の8/31／高2の7/31／高2年度末） | 承認済み・実行確認済み | tests/test_decisions.py（8/31は利用者決定） |
 | チーム利用（個人トークン・役割・相互確認・操作者記録） | 実行確認済み | test_roles_and_disabled_users, test_second_member_must_approve_user_definitions |
 | 成果ラベル hakone_leg_top@1 | 承認済み（定義）・実装済み（部品） | tests/test_decisions.py。実データ・予測には未使用 |
 | 成果の追跡期間・参考記録の扱い | 提案のみ | docs/decisions.md「未確定」 |

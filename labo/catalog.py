@@ -5,7 +5,7 @@ from .definitions import FeatureDefinition, validate_spec
 
 _COMMON_EXCL = ("本人照合済み・正常完走・正の数値タイム・5000m個人走・締切以前の実施日が確認できる結果のみ。"
                 "駅伝/チーム/リレーの親レコード、3000mSC等の別種目、DNS/DNF/DSQ、未確認行は除外または保留。")
-_COMMON_TIME = "観測締切C（既定：高2の7/31終了時点・日本時間）以前の実施日のみ。公表日不明時は競技日基準の再構成。"
+_COMMON_TIME = "観測締切C（既定：高2の8/31終了時点・日本時間）以前の実施日のみ。公表日不明時は競技日基準の再構成。"
 _COMMON_COLS = ["records.event/event_group/distance_m", "records.date", "records.mark_raw/mark_value",
                 "records.status", "profiles（本人照合）", "高校入学年度（根拠付き）"]
 _H = {"kind": "hs"}
@@ -62,12 +62,12 @@ def builtin_definitions() -> list[FeatureDefinition]:
         _d("grade2_best_5000_s", "高2年度（締切まで）5000m最良", "伸び", "高2時点の水準。",
            "min(秒)", "高2の4/1〜C", "1件以上", "秒", "小さいほど速い",
            {"op": "min", "event": "5000m", "window": {"kind": "grade", "grade": 2}, "min_n": 1},
-           "0出走ならnull。締切（既定 高2の7/31）より後は含めない", tests=["test_grade_boundary"]),
+           "0出走ならnull。締切（既定 高2の8/31）より後は含めない", tests=["test_grade_boundary"]),
         _d("grade1_to_grade2_improvement_s", "高1→高2の短縮（秒）", "伸び",
            "高1から高2への伸びが後の伸びと関係するか。", "07 − 08（正なら短縮）", "07/08に従う",
            "07・08が計算可能", "秒", "大きいほど短縮",
            {"op": "diff", "inputs": ["grade1_best_5000_s@1", "grade2_best_5000_s@1"]},
-           "どちらかがnullならnull", caution="比較期間の観測件数と終了日を併記。7/31締切では高1=12か月・高2=4か月で期間長が異なる"),
+           "どちらかがnullならnull", caution="比較期間の観測件数と終了日を併記。8/31締切では高1=12か月・高2=5か月で期間長が異なる"),
         _d("grade1_to_grade2_improvement_pct", "高1→高2の短縮率", "伸び",
            "記録水準の違いを割合で比較。", "100×(07−08)/07", "07/08に従う",
            "07・08が計算可能かつ07>0", "%", "大きいほど短縮",

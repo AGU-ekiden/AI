@@ -1,4 +1,4 @@
-"""2026-10-18 の利用者決定（7/31締切・箱根の成果定義）に関するテスト。"""
+"""2026-10-18 の利用者決定（高2の8/31締切・箱根の成果定義）に関するテスト。"""
 import unittest
 from datetime import date as D
 
@@ -11,12 +11,39 @@ from labo.model import IDENTITY_UNCONFIRMED
 from .helpers import ds_of, res, values
 
 JUL = CUTOFF_PRESETS["g2_jul31"]
+AUG = CUTOFF_PRESETS["g2_aug31"]
 OD = OutcomeDefinition()
 
 
-class July31Cutoff(unittest.TestCase):
+class August31Cutoff(unittest.TestCase):
     def test_default_and_dates(self):
-        self.assertEqual(DEFAULT_CUTOFF, "g2_jul31")
+        self.assertEqual(DEFAULT_CUTOFF, "g2_aug31")
+        self.assertEqual(AUG.resolve(2020), D(2021, 8, 31))
+
+    def test_interhigh_included_when_day_confirmed(self):
+        ih = dict(start=D(2021, 7, 28), end=D(2021, 8, 1))
+        rows = [res("A", D(2020, 9, 1), 950), res("A", None, 900, performed=D(2021, 7, 30), **ih),
+                res("A", D(2021, 9, 1), 880)]
+        v = values(ds_of(rows), rule=AUG)
+        self.assertEqual(v["best_5000_s"].value, 900)
+        self.assertEqual(v["grade2_best_5000_s"].period_end, "2021-08-31")
+        self.assertIn("期間の長さが異なる", v["grade1_to_grade2_improvement_s"].note)
+        # 実施日未確認なら、締切前の大会でも初日を実施日と見なさず保留
+        from labo.periods import hs_window
+        from labo.quality import select_runs
+        ds = ds_of([res("A", None, 900, **ih)])
+        dec = select_runs(ds, "A", "5000m", D(2021, 8, 31), hs_window(2020, D(2021, 8, 31)))[1][0]
+        self.assertEqual((dec.decision, dec.reason), ("held", "performed_date_unknown"))
+
+    def test_window_edges_at_august31(self):
+        rows = [res("A", D(2020, 9, 1), 880), res("A", D(2020, 8, 31), 870), res("A", D(2021, 8, 31), 900)]
+        v = values(ds_of(rows), rule=AUG)
+        self.assertEqual(v["best_5000_365d_s"].value, 880)   # 2020-09-01〜2021-08-31
+        self.assertEqual(v["days_since_last_5000"].value, 0)
+
+
+class July31CutoffOption(unittest.TestCase):
+    def test_dates(self):
         self.assertEqual(JUL.resolve(2020), D(2021, 7, 31))
 
     def test_interhigh_spanning_cutoff_is_held(self):

@@ -46,6 +46,14 @@ def main() -> int:
     print("接続ユーザー:", report["safety"]["current_user"], "（rkm への書き込み権限なしを確認）")
     print("件数:", counts)
     print("失敗したクエリ:", list(report["errors"]) or "なし")
+    rls = report["results"].get("rls_status", [])
+    hidden = [r[0] for r in rls if r[1] and counts.get(r[0], 0) == 0]
+    if hidden:
+        print("注意: 次の表は RLS（行レベルセキュリティ）が有効で、lab_reader 用のポリシーがないため"
+              "0件に見えている可能性があります:", ", ".join(hidden))
+        print("      推定行数（統計）:", {r[0]: r[3] for r in rls if r[0] in hidden})
+    elif counts and not any(counts.values()):
+        print("注意: すべて0件です。陸マガデータがこのプロジェクトに入っているか確認してください。")
     print("保存先:", out)
     return 0
 

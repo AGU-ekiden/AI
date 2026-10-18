@@ -53,6 +53,12 @@ AUDIT_QUERIES: dict[str, str] = {
     "shared_record_ids": (
         "SELECT count(*) FROM (SELECT record_id FROM rkm.records GROUP BY record_id "
         "HAVING count(DISTINCT person_id) > 1) s"),
+    # RLS の有無と統計上の推定行数（RLS で行が見えなくても統計は見える）
+    "rls_status": (
+        "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, c.reltuples::bigint, "
+        "(SELECT count(*) FROM pg_policies p WHERE p.schemaname = 'rkm' AND p.tablename = c.relname) "
+        "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = 'rkm' AND c.relkind IN ('r', 'p') ORDER BY 1"),
     "season_bests_def": (
         "SELECT pg_get_viewdef('rkm.season_bests'::regclass, true)"),
     # 内容ハッシュ（導入前後で既存データが不変であることの確認用）

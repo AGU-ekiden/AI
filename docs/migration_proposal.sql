@@ -1,0 +1,54 @@
+-- ============================================================================
+-- 研究用保存先の【承認用案】— 未実行。利用者の承認なしに実行しないこと。
+-- 既存 rkm スキーマには一切書き込まない（DROP/TRUNCATE/DELETE/UPDATE なし）。
+-- スキーマ名 lab は仮称。権限・RLS は利用者数の確認後に確定する。
+-- 復旧方針：本案で作るのは lab スキーマ内の新規オブジェクトのみ。不要になれば
+--   lab スキーマ配下のみを対象に、別途承認を得て撤去する。rkm への影響はない。
+-- 前後検証：適用前後で rkm の各表件数と records_hash（labo/adapters/rkm_readonly.py）を比較する。
+-- ============================================================================
+
+-- CREATE SCHEMA lab;
+
+-- CREATE TABLE lab.feature_definitions (
+--   feature_id text NOT NULL, version int NOT NULL, spec jsonb NOT NULL, spec_hash text NOT NULL,
+--   metadata jsonb NOT NULL, created_by uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+--   PRIMARY KEY (feature_id, version)            -- 版は不変。変更は新しい version
+-- );
+-- CREATE TABLE lab.review_decisions (
+--   id bigserial PRIMARY KEY, kind text NOT NULL, target text NOT NULL,
+--   from_status text, to_status text, comment text NOT NULL,
+--   decided_by uuid NOT NULL, decided_at timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE TABLE lab.cohort_definitions (
+--   cohort_id text NOT NULL, version int NOT NULL, criteria jsonb NOT NULL, cutoff_rule jsonb NOT NULL,
+--   note text, PRIMARY KEY (cohort_id, version)
+-- );
+-- CREATE TABLE lab.dataset_snapshots (
+--   dataset_hash text PRIMARY KEY, row_counts jsonb NOT NULL, quality_rules_version text NOT NULL,
+--   source_note text, created_at timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE TABLE lab.feature_runs (
+--   run_id text PRIMARY KEY,                     -- 入力のハッシュ。再実行は同じID
+--   dataset_hash text NOT NULL REFERENCES lab.dataset_snapshots,
+--   code_version text NOT NULL, params jsonb NOT NULL, state text NOT NULL,
+--   created_by uuid NOT NULL, started_at timestamptz, finished_at timestamptz, error text
+-- );
+-- CREATE TABLE lab.feature_values (
+--   run_id text NOT NULL REFERENCES lab.feature_runs, person_id text NOT NULL, cutoff date,
+--   feature_id text NOT NULL, version int NOT NULL, value double precision, unit text,
+--   reason text NOT NULL, evidence_count int NOT NULL, evidence jsonb NOT NULL,
+--   period_start date, period_end date, note text,
+--   PRIMARY KEY (run_id, person_id, feature_id, version),   -- 重複保存を防ぐ
+--   FOREIGN KEY (feature_id, version) REFERENCES lab.feature_definitions
+-- );
+-- CREATE TABLE lab.duplicate_links (
+--   canonical_key text NOT NULL, duplicate_key text PRIMARY KEY, evidence text NOT NULL,
+--   decided_by uuid NOT NULL, decided_at timestamptz NOT NULL DEFAULT now()
+-- );
+-- 将来用（枠のみ）：lab.outcome_definitions / lab.outcomes / lab.experiments
+
+-- RLS（案）：全表で有効化し、許可リストの利用者のみ参照・追加可。更新・削除は不可。
+-- ALTER TABLE lab.feature_values ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY lab_read ON lab.feature_values FOR SELECT TO authenticated
+--   USING (auth.uid() IN (SELECT user_id FROM lab.members));
+-- （他の表も同様。service role 鍵はサーバー側の秘密管理のみ。ブラウザへ配信しない）

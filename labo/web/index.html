@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>特徴量ラボ</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">特徴量ラボ <span class="sub">選手育成研究（非公開）</span></div>
+  <div id="data-badge" class="badge" role="status"></div>
+</header>
+<nav id="nav" class="nav" aria-label="画面切替" hidden>
+  <button type="button" data-view="home">研究トップ</button>
+  <button type="button" data-view="features">ファクター一覧</button>
+  <button type="button" data-view="create">特徴量作成</button>
+  <button type="button" data-view="run">計算実行</button>
+  <button type="button" data-view="results">結果確認</button>
+  <button type="button" data-view="history">実験履歴</button>
+  <button type="button" data-view="quality">品質・保留</button>
+  <button type="button" id="logout" class="ghost">ログアウト</button>
+</nav>
+<main id="main" tabindex="-1"></main>
+<footer class="foot">
+  研究結果は才能の断定や進学・採用・選抜の判定に使いません。予測・ランキング機能はありません。
+</footer>
+</body>
+</html>

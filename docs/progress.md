@@ -22,7 +22,7 @@
 | 将来評価用ラベル・世代分割 | 実装済み（土台のみ） | test_future_labels_*。予測モデルはなし |
 | AIによる定義案 | 提案のみ（段階4） | 画面に「未実装」と表示 |
 | rkm 読み取り専用監査 | 実装済み・本番で接続成功。lab_reader 用読み取りポリシーを全10表に追加済み（2026-10-19 利用者実行）・**監査実行済み（件数は参考値と完全一致：docs/audit_baseline.md）** | 利用者がチームPCで実行（docs/next_steps.md A-3） |
-| rkm → 研究用モデルの読み込み | 実装済み・模擬DB（実スキーマ・lab_reader）で全経路を確認。**実データでは未実行** | labo/adapters/rkm_loader.py、tests/test_rkm_loader.py |
+| rkm → 研究用モデルの読み込み | **実データで実行確認済み（2026-10-19 第1・2回）** | labo/adapters/rkm_loader.py、tests/test_rkm_loader.py |
 | 実データでの15特徴量計算・集計 | **実行確認済み（第1回 2026-10-19、docs/real_runs.md）** | scripts/run_real_features.py（集計は氏名・IDなし） |
 | Web画面の実データ表示 | 実装済み（LABO_DATA_SOURCE=rkm） | 模擬DBで起動・表示を確認 |
 | 研究用DBスキーマ | 方針は承認済み・**未実行** | docs/migration_proposal.sql（lab_writer で実行する案） |

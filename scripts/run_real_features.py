@@ -37,6 +37,23 @@ def quantiles(vals):
     return {"p10": pick(0.1), "p50": pick(0.5), "p90": pick(0.9), "min": v[0], "max": v[-1]}
 
 
+def _diagnose_ambiguous(ds, evidence_keys, counter) -> None:
+    """直近N出走の境界で順序不明になった同日の出走の組み合わせを、氏名なしの型として数える。"""
+    from labo.adapters.rkm_mapping import round_class
+    by_key = {r.key.as_str(): r for r in ds.results}
+    rows = [by_key[k] for k in evidence_keys if k in by_key]
+    if len(rows) < 2:
+        counter["不明（根拠行なし）"] += 1
+        return
+    same_comp = len({r.competition_id for r in rows}) == 1
+    classes = "/".join(sorted(str(round_class(r.round_raw)) for r in rows))
+    secs = [r.seconds for r in rows if r.seconds is not None]
+    diff = max(secs) - min(secs) if len(secs) >= 2 else None
+    bucket = ("差なし" if diff == 0 else "1秒未満" if diff is not None and diff < 1
+              else "1〜10秒" if diff is not None and diff < 10 else "10秒以上" if diff is not None else "不明")
+    counter[f"{'同じ大会' if same_comp else '別の大会'}｜ラウンド {classes}｜記録の差 {bucket}"] += 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cutoff", default=DEFAULT_CUTOFF, choices=sorted(CUTOFF_PRESETS))
@@ -71,6 +88,7 @@ def main() -> int:
     feat_reasons = {d.ref: Counter() for d in defs}
     excluded = Counter()
     decisions = Counter()
+    ambiguous = Counter()
     with open(out_csv, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["# 実データ（非公開）。チームPCの外に出さないこと。予測・順位ではありません"])
@@ -86,6 +104,8 @@ def main() -> int:
                 decisions[(d.decision, d.reason)] += 1
             vals = compute_person(ds, ath, defs, rule)
             for v in vals:
+                if v.reason == "ambiguous_order" and v.feature_ref.startswith("latest3"):
+                    _diagnose_ambiguous(ds, v.evidence, ambiguous)
                 feat_reasons[v.feature_ref][v.reason] += 1
                 if v.value is not None:
                     feat_vals[v.feature_ref].append(v.value)
@@ -97,6 +117,17 @@ def main() -> int:
     today = datetime.now(timezone.utc).date()
     labels = Counter()
     unknown_reasons = Counter()
+    hakone_gaps = Counter()
+    by_person = {}
+    for lg in hakone.legs:
+        by_person.setdefault(lg.person_id, []).append(lg)
+    for pid, years in hakone.run_years.items():
+        for y in years or []:
+            recs = [lg for lg in by_person.get(pid, []) if lg.edition_fy == y - 1]
+            if not recs:
+                hakone_gaps[(str(y), "箱根本戦の記録なし")] += 1
+            elif not any(lg.official_rank is not None or lg.reference_only for lg in recs):
+                hakone_gaps[(str(y), "記録はあるが区間順位なし")] += 1
     for pid, ath in ds.athletes.items():
         if ath.hs_entry_fiscal_year is None:
             labels[("入学年度不明", "unknown")] += 1
@@ -130,6 +161,8 @@ def main() -> int:
         "outcome_labels_by_entry_fy": {f"{k[0]}:{k[1]}": v for k, v in sorted(labels.items())},
         "outcome_unknown_reasons": {f"{k[0]}:{k[1]}": v for k, v in sorted(unknown_reasons.items())},
         "outcome_definition": od.ref,
+        "hakone_gaps_by_run_year": {f"{k[0]}:{k[1]}": v for k, v in sorted(hakone_gaps.items())},
+        "ambiguous_order_patterns": {k: v for k, v in ambiguous.most_common()},
     }
     out_json = ROOT / "data" / "real_summary.json"
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")

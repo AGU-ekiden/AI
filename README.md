@@ -23,7 +23,7 @@
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（86件）
+python3 -m unittest discover -s tests -t .   # テスト（89件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```
@@ -33,7 +33,8 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 - 既定は `127.0.0.1` のみで待ち受けます。チームで使うときはチームPCで `LABO_HOST` に VPN のアドレスを指定します。インターネットへは公開しないでください。
 - 実DBの監査（段階2）：`pip install -r requirements-db.txt` → `RKM_READONLY_DSN` を設定 → `python scripts/run_audit.py`。
 - 箱根の記録欠けの補完：`python scripts/fill_hakone_supplement.py`（2025年は公式記録から自動記入）。その他の年は `make_hakone_supplement.py` で記入用一覧を作り手入力（rkm は変更しない）。
-- 実データで15特徴量を計算：`python scripts/run_real_features.py`（集計 `data/real_summary.json` は氏名なし、`data/real_features.csv` は氏名あり・共有しない）。画面で見る場合は `LABO_DATA_SOURCE=rkm`。
+- 実データで特徴量を計算：`python scripts/run_real_features.py`（初期15特徴量＋画面で「計算可能」「研究で採用」にした利用者定義。集計 `data/real_summary.json` は氏名なし、`data/real_features.csv` は氏名あり・共有しない）。画面で見る場合は `LABO_DATA_SOURCE=rkm`。
+- スマホ用ダッシュボードの表：`python scripts/make_dashboard_csv.py`（`data/dashboard/` に集計CSV。氏名・IDなし）。
 - 環境変数の見本は `.env.example`（秘密値は含みません）。`data/` は git 管理外です。
 
 ## 構成

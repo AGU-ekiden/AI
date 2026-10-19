@@ -43,6 +43,14 @@ python scripts/make_hakone_supplement.py     # data\hakone_supplement.csv（氏�
 Excel で開き、各行の leg（区間 1〜10）と leg_rank（区間順位）を公式結果から記入。学生連合なら is_student_alliance に 1
 （leg_rank は空でよい）。source_note に出典。保存（CSV UTF-8）後に `python scripts/run_real_features.py` を実行すると取り込まれる。
 
+## B3. 特徴量を増やすときの流れ
+1. 画面（特徴量作成）で定義を作る → 定義確認 → テスト済み → もう1人が「計算可能」にする
+   （1人で使う間は `LABO_REQUIRE_SECOND_REVIEWER=false`）。
+2. チームPCで `python scripts/run_real_features.py` を再実行。承認済みの利用者定義も自動で入る
+   （未承認・廃止は入らず、画面に「対象外」と表示）。既存の特徴量の定義・過去の結果は変わらない。
+3. `data\real_summary.json` を Claude に渡す → スマホ用ダッシュボードの表を更新
+   （Claude 側は `scripts/make_dashboard_csv.py` で作る）。
+
 ## C. Claude 側（real_summary.json を受け取った後）
 1. 欠損理由・保留理由の内訳を確認し、想定外の多さがあれば原因を特定してルールを見直す。
 2. 研究用の保存先（lab スキーマ）の作成案を最終確認 → 適用 → rkm の件数・ハッシュが不変か確認。

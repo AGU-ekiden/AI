@@ -1,6 +1,10 @@
-"""実データ（rkm・読み取り専用）で15特徴量を計算する（チームPCで実行）。
+"""実データ（rkm・読み取り専用）で特徴量を計算する（チームPCで実行）。
+
+計算するのは初期15特徴量と、特徴量ラボの画面で「計算可能」「研究で採用」になった利用者定義
+（data/definitions/ と判断履歴。廃止・未承認は含めない）。特徴量を増やしたら再実行するだけでよい。
 
     python scripts/run_real_features.py                 # 全員を計算
+    python scripts/run_real_features.py --builtin-only  # 初期15特徴量だけ
     python scripts/run_real_features.py --person <ID>   # 1人分の根拠を表示（手計算との突き合わせ用）
 
 出力：
@@ -11,6 +15,7 @@
 import argparse
 import csv
 import json
+import os
 import sys
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -21,12 +26,13 @@ sys.path.insert(0, str(ROOT))
 
 from labo.adapters.rkm_loader import load_from_db  # noqa: E402
 from labo.adapters.rkm_mapping import person_complete_editions  # noqa: E402
-from labo.catalog import builtin_definitions  # noqa: E402
 from labo.cohorts import builtin_cohorts, evaluate  # noqa: E402
 from labo.features import compute_person, make_context  # noqa: E402
 from labo.outcomes import OutcomeDefinition, label_person  # noqa: E402
 from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF  # noqa: E402
+from labo.definitions import RUNNABLE_STATUSES  # noqa: E402
 from labo.quality import Options, select_runs  # noqa: E402
+from labo.store import Store  # noqa: E402
 
 
 def quantiles(vals):
@@ -54,15 +60,55 @@ def _diagnose_ambiguous(ds, evidence_keys, counter) -> None:
     counter[f"{'同じ大会' if same_comp else '別の大会'}｜ラウンド {classes}｜記録の差 {bucket}"] += 1
 
 
+def research_definitions(data_dir: Path, builtin_only: bool = False):
+    """計算対象の定義と、対象外にした利用者定義（理由つき）を返す。"""
+    defs = Store(data_dir).definitions()
+    chosen, skipped = [], {}
+    for d in defs:
+        if d.builtin:
+            ok = d.review_status != "廃止"
+        else:
+            ok = not builtin_only and d.review_status in RUNNABLE_STATUSES
+        if ok:
+            chosen.append(d)
+        elif not d.builtin and not builtin_only:
+            skipped[d.ref] = f"状態が「{d.review_status}」"
+    refs = {d.ref for d in chosen}
+    changed = True
+    while changed:  # 参照先が対象外の派生特徴量は計算しない
+        changed = False
+        for d in list(chosen):
+            missing = [r for r in d.spec.get("inputs", []) if r not in refs]
+            if missing:
+                chosen.remove(d)
+                refs.discard(d.ref)
+                skipped[d.ref] = f"参照先 {', '.join(missing)} が計算対象でない"
+                changed = True
+    return chosen, skipped
+
+
+def feature_meta(d) -> dict:
+    return {"feature_id": d.feature_id, "version": d.version, "name": d.display_name,
+            "category": d.category, "unit": d.unit, "model_input": d.model_input_allowed,
+            "builtin": d.builtin, "status": d.review_status}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cutoff", default=DEFAULT_CUTOFF, choices=sorted(CUTOFF_PRESETS))
     ap.add_argument("--person", help="この person_id の根拠を表示（ローカル確認用）")
+    ap.add_argument("--builtin-only", action="store_true", help="初期15特徴量だけを計算")
+    ap.add_argument("--data-dir", default=os.environ.get("LABO_DATA_DIR", str(ROOT / "data")),
+                    help="特徴量ラボの保存先（利用者定義を読む）")
     args = ap.parse_args()
     rule = CUTOFF_PRESETS[args.cutoff]
     print("読み込み中（読み取り専用）…")
     ds, hakone, rep = load_from_db()
-    defs = builtin_definitions()
+    defs, skipped_defs = research_definitions(Path(args.data_dir), args.builtin_only)
+    n_user = sum(not d.builtin for d in defs)
+    print(f"計算する特徴量 {len(defs)}件（初期 {len(defs) - n_user}・利用者定義 {n_user}）")
+    for ref, why in skipped_defs.items():
+        print(f"  対象外 {ref}：{why}")
 
     if args.person:
         ath = ds.athletes.get(args.person)
@@ -157,8 +203,10 @@ def main() -> int:
                  "hakone_ambiguous_records": hakone.ambiguous_records},
         "cohort": {"included": n_in, "excluded": dict(excluded)},
         "decisions_5000m": {f"{k[0]}:{k[1]}": v for k, v in decisions.most_common()},
-        "features": {ref: {"non_null": len(feat_vals[ref]), "reasons": dict(feat_reasons[ref]),
-                           "quantiles": quantiles(feat_vals[ref])} for ref in feat_vals},
+        "features": {d.ref: {**feature_meta(d), "non_null": len(feat_vals[d.ref]),
+                             "reasons": dict(feat_reasons[d.ref]),
+                             "quantiles": quantiles(feat_vals[d.ref])} for d in defs},
+        "features_skipped": skipped_defs,
         "outcome_labels_by_entry_fy": {f"{k[0]}:{k[1]}": v for k, v in sorted(labels.items())},
         "outcome_unknown_reasons": {f"{k[0]}:{k[1]}": v for k, v in sorted(unknown_reasons.items())},
         "outcome_definition": od.ref,

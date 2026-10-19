@@ -17,6 +17,7 @@
 | 母集団の版管理（締切時点情報のみ） | 実行確認済み | test_cohort_*, test_cohort_plan_* |
 | 版付き定義・状態遷移・判断履歴 | 実行確認済み | test_store_server.py |
 | 計算ジョブ（取消・再開・重複なし） | 実行確認済み | test_rerun_and_resume_do_not_duplicate |
+| 研究状況の画面（評価値・上積み・承認・実データで再計算・再評価） | 実装済み・模擬DBで画面から実行確認（Chromium・スマホ幅/PC幅・JSエラーなし） | labo/web/app.js viewResearch、/api/research、test_research_view |
 | Web 7画面・CSV出力・認証 | 実行確認済み | ServerTests ＋ Chromium で操作確認（PC/スマホ幅・JSエラーなし） |
 | 駅伝本人区間・区間ペース | 実装済み（部品のみ） | test_ekiden_self_leg_vs_pass_time。特徴量としては未定義 |
 | 将来評価用ラベル・世代分割 | 実装済み（土台のみ） | test_future_labels_* |

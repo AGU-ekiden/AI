@@ -193,6 +193,17 @@ class ServerTests(unittest.TestCase):
             self.assertNotIn(b"service_role", f.read_bytes())
         self.assertEqual(self.req("/../data/.token")[0], 404)
 
+    def test_research_view(self):
+        cookie = self.login()
+        code, _, body = self.req("/api/research", cookie=cookie)
+        self.assertEqual(code, 200)
+        d = json.loads(body)
+        self.assertFalse(d["can_run"])          # 合成データでは再計算・再評価できない
+        self.assertIsNone(d["tables"])           # 集計ファイルがまだない
+        self.assertTrue(any(f["status"] == "テスト済み" for f in d["features"]))
+        code, _, body = self.req("/api/research/run", {}, cookie)
+        self.assertEqual(code, 400)
+
     def test_end_to_end_run_and_export(self):
         cookie = self.login()
         code, _, body = self.req("/api/overview", cookie=cookie)

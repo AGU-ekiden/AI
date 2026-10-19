@@ -11,60 +11,15 @@
 個人ごとの予測値・確率・順位は作成も保存もしない。
 """
 import argparse
-import hashlib
-import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from run_real_features import feature_meta, research_definitions  # noqa: E402
-
-from labo.cohorts import builtin_cohorts, evaluate as in_cohort  # noqa: E402
-from labo.features import compute_person  # noqa: E402
-from labo.outcomes import OutcomeDefinition  # noqa: E402
 from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF  # noqa: E402
-from labo.research_eval import EvalConfig, EvalRow, evaluate  # noqa: E402
-
-BASELINE = ["best_5000_s@1"]
-
-
-def build_rows(ds, labels, defs, rule) -> list[EvalRow]:
-    """対象者ごとの特徴量と成果ラベル（メモリ内のみ）。人物IDは持たない。"""
-    cohort = next(c for c in builtin_cohorts() if c.cohort_id == "all_with_entry_year")
-    rows = []
-    for pid in sorted(ds.athletes):
-        ath = ds.athletes[pid]
-        if not in_cohort(cohort, ds, ath, rule)[0]:
-            continue
-        vals = {v.feature_ref: v.value for v in compute_person(ds, ath, defs, rule)}
-        rows.append(EvalRow(ath.hs_entry_fiscal_year, labels[pid].label, vals))
-    return rows
-
-
-def choose(defs, requested: str | None = None, use_all: bool = False):
-    """（1つずつ試す候補, 評価値を出すセット, 品質表示専用で使わない一覧）。
-
-    セットの既定は「研究で採用」にした特徴量（＋基準）。--features で指定、--all で候補すべて。
-    品質表示専用（model_input=False）はモデルに入れない。"""
-    by_ref = {d.ref: d for d in defs}
-    cand = [d.ref for d in defs if d.model_input_allowed and d.ref not in BASELINE]
-    not_model = [d.ref for d in defs if not d.model_input_allowed]
-    if requested:
-        refs = [r.strip() for r in requested.split(",") if r.strip()]
-        unknown = [r for r in refs if r not in by_ref]
-        if unknown:
-            raise SystemExit(f"計算対象にない特徴量: {', '.join(unknown)}")
-        selected = [r for r in refs if r in cand]
-    elif use_all:
-        selected = list(cand)
-    else:
-        selected = [r for r in cand if by_ref[r].review_status == "研究で採用"]
-    return cand, selected, not_model
+from labo.research_job import BASELINE, build_rows, choose, evaluate_and_save, research_definitions  # noqa: E402,F401
 
 
 def main() -> int:
@@ -77,36 +32,18 @@ def main() -> int:
     ap.add_argument("--note", default="", help="この実行のメモ（履歴に残る。氏名は書かない）")
     args = ap.parse_args()
 
-    from labo.adapters.rkm_loader import load_from_db, outcome_labels
+    from labo.adapters.rkm_loader import load_from_db
     rule = CUTOFF_PRESETS[args.cutoff]
-    defs, _ = research_definitions(Path(args.data_dir))
-    cand, selected, not_model = choose(defs, args.features, args.all)
+    out = Path(args.data_dir)
+    defs, _ = research_definitions(out)
+    try:
+        cand, selected, _ = choose(defs, args.features, args.all)
+    except ValueError as e:
+        raise SystemExit(str(e))
     print("読み込み中（読み取り専用）…")
     ds, hakone, _ = load_from_db()
-    od = OutcomeDefinition()
-    labels = outcome_labels(ds, hakone, od, datetime.now(timezone.utc).date())
-    rows = build_rows(ds, labels, defs, rule)
-    cfg = EvalConfig(baseline=BASELINE, candidates=cand, selected=selected, include_holdout=args.final_check)
-    info = {d.ref: {"name": d.display_name, "category": d.category} for d in defs}
     print(f"評価中（セット＝基準＋{len(selected)}件・1つずつ試す候補 {len(cand)}件）…")
-    res = evaluate(rows, cfg, info)
-
-    feature_set = sorted(res["features_used"])
-    res.update({
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "cutoff": rule.label, "outcome_definition": od.ref, "dataset": ds.label,
-        "feature_set_id": hashlib.sha256(json.dumps(feature_set).encode()).hexdigest()[:10],
-        "not_model_input": not_model, "note": args.note,
-        "features_meta": {d.ref: feature_meta(d) for d in defs if d.ref in set(feature_set) | set(cand)},
-    })
-    out = Path(args.data_dir)
-    (out / "eval_summary.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
-    hist = {k: res[k] for k in ("generated_at", "feature_set_id", "score", "baseline_score",
-                                "gain_over_baseline", "gain_ci", "note")}
-    hist.update({"n_features": len(feature_set), "final_check": args.final_check,
-                 "features": feature_set, "n": res["full"].get("n"), "positives": res["full"].get("positives")})
-    with open(out / "eval_history.jsonl", "a", encoding="utf-8") as f:
-        f.write(json.dumps(hist, ensure_ascii=False) + "\n")
+    res = evaluate_and_save(ds, hakone, defs, rule, out, args.features, args.all, args.final_check, args.note)
 
     fmt = lambda v: "—" if v is None else f"{v:.3f}"  # noqa: E731
     print(f"評価値（{res['score_name']}）: {fmt(res['score'])}　基準（5000mベストのみ）: {fmt(res['baseline_score'])}"

@@ -54,6 +54,58 @@ class App:
         self.cancel_flags: dict[str, threading.Event] = {}
         self.threads: dict[str, threading.Thread] = {}
         self.lock = threading.Lock()
+        # 研究状況の再計算・再評価（実データのときだけ。同時に1つ）
+        self.real_data = False
+        self.research_state = {"state": "idle", "message": "", "started_at": None, "finished_at": None,
+                               "actor": None}
+        self.research_thread: Optional[threading.Thread] = None
+
+    # ---- 研究状況 ----
+    def research(self) -> dict:
+        from .definitions import RUNNABLE_STATUSES
+        from .research_view import load_tables
+        tables = load_tables(self.store.root)
+        defs = [d for d in self.store.definitions() if d.model_input_allowed and d.review_status != "廃止"]
+        return {
+            "tables": tables, "job": dict(self.research_state), "can_run": self.real_data,
+            "features": [{"ref": d.ref, "feature_id": d.feature_id, "name": d.display_name,
+                          "category": d.category, "status": d.review_status, "builtin": d.builtin,
+                          "runnable": d.review_status in RUNNABLE_STATUSES,
+                          "next": sorted(TRANSITIONS.get(d.review_status, set()))} for d in defs],
+        }
+
+    def start_research(self, actor: str) -> dict:
+        if not self.real_data:
+            raise SpecError("合成データで起動しています。実データ（LABO_DATA_SOURCE=rkm）で起動したときだけ実行できます")
+        with self.lock:
+            if self.research_thread and self.research_thread.is_alive():
+                raise SpecError("再計算・再評価を実行中です。終わるまでお待ちください")
+            self.research_state = {"state": "running", "message": "開始", "actor": actor.split(":", 1)[-1],
+                                   "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "finished_at": None}
+            self.research_thread = threading.Thread(target=self._research_job, args=(actor,), daemon=True)
+            self.research_thread.start()
+        self.store.audit(actor, "research_run", {})
+        return dict(self.research_state)
+
+    def _research_job(self, actor: str) -> None:
+        from .adapters.rkm_loader import load_from_db
+        from .research_job import run_all
+
+        def progress(msg: str) -> None:
+            self.research_state["message"] = msg
+        try:
+            progress("実データを読み込み中（読み取り専用）")
+            loaded = load_from_db()
+            self.ds = loaded[0]  # 画面の他の機能も最新のデータに合わせる
+            run_all(self.store.root, CUTOFF_PRESETS[DEFAULT_CUTOFF], loaded=loaded, progress=progress,
+                    note=f"画面から実行（{actor.split(':', 1)[-1]}）")
+            self.research_state.update(state="done", message="完了")
+        except Exception as e:  # 接続文字列などの秘密は含めず、種類だけ表示する
+            self.research_state.update(state="failed", message=f"失敗しました（{type(e).__name__}）。サーバーの画面に詳細")
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.research_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
 
     # ---- ジョブ ----
     def start_job(self, run_id: str) -> None:
@@ -351,6 +403,8 @@ def make_handler(app: App):
         def _route_get(self, path: str, q: dict, cutoff: str):
             if path == "/api/overview":
                 return self._json(200, app.overview())
+            if path == "/api/research":
+                return self._json(200, app.research())
             if path == "/api/features":
                 rates = app.feature_missing_rates()
                 return self._json(200, {
@@ -445,6 +499,8 @@ def make_handler(app: App):
                     str(body.get("comment", "")), actor))
             if path == "/api/features/preview":
                 return self._json(200, app.preview(str(body.get("ref", ""))))
+            if path == "/api/research/run":
+                return self._json(202, app.start_research(actor))
             if path in ("/api/runs/plan", "/api/runs"):
                 refs = body.get("features")
                 if not isinstance(refs, list) or not refs or len(refs) > 200 or \
@@ -507,6 +563,7 @@ def build_server(host: str, port: int, data_dir: Path):
     else:
         dataset = synthetic.generate()
     app = App(store, dataset, users, secure_cookie=secure)
+    app.real_data = os.environ.get("LABO_DATA_SOURCE", "synthetic") == "rkm"
     return ThreadingHTTPServer((host, port), make_handler(app)), app
 
 

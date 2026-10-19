@@ -74,3 +74,28 @@ progress { width: 100%; max-width: 420px; height: 14px; }
   dl.kv { grid-template-columns: 1fr; }
   dl.kv dt { margin-top: 6px; }
 }
+/* 研究状況 */
+.delta { display: grid; grid-template-columns: 4.6rem minmax(80px, 1fr); gap: 6px; align-items: center; min-width: 170px; }
+.delta .track { position: relative; height: 12px; background: var(--bg); border-radius: 3px; }
+.delta .zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+.delta .bar { position: absolute; top: 2px; height: 8px; border-radius: 2px; background: var(--muted); }
+.delta .bar.pos { background: var(--accent); }
+.delta .bar.sure { background: var(--ok-fg); }
+.delta .ci { position: absolute; top: 5px; height: 2px; background: var(--fg); opacity: .7; }
+.small { font-size: .8rem; }
+.stat .ci { color: var(--muted); font-size: .8rem; }
+.flist { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.frow { display: grid; grid-template-columns: minmax(180px, 2fr) 7rem minmax(170px, 1.4fr) minmax(170px, 1.4fr) 4.5rem 8.5rem;
+  gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); align-items: start; }
+.frow:last-child { border-bottom: 0; }
+.fhead { font-weight: 600; font-size: .85rem; background: var(--bg); border-radius: 8px 8px 0 0; }
+.frow .flbl { display: none; }
+.fname { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .fhead { display: none; }
+  .frow { grid-template-columns: 1fr auto; }
+  .frow .fname { grid-column: 1; } .frow .fstat { grid-column: 2; text-align: right; }
+  .frow .fd, .frow .fcov, .frow .fact { grid-column: 1 / -1; }
+  .frow .flbl { display: block; color: var(--muted); font-size: .78rem; }
+  .frow .fcov .flbl { display: inline; }
+}

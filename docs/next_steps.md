@@ -43,6 +43,19 @@ python scripts/make_hakone_supplement.py     # data\hakone_supplement.csv（氏�
 Excel で開き、各行の leg（区間 1〜10）と leg_rank（区間順位）を公式結果から記入。学生連合なら is_student_alliance に 1
 （leg_rank は空でよい）。source_note に出典。保存（CSV UTF-8）後に `python scripts/run_real_features.py` を実行すると取り込まれる。
 
+## B0. いちばん簡単な回し方：画面「研究状況」（2026-10-19〜）
+```powershell
+$env:RKM_READONLY_DSN = "（lab_reader の接続文字列）"
+$env:LABO_DATA_SOURCE = "rkm"
+python -m labo.server            # スマホから見るなら LABO_HOST に VPN のアドレス（docs/mobile_access.md）
+```
+ログイン後の最初の画面「研究状況」で：
+1. 「『テスト済み』の11件をまとめて計算可能にする」を押す（第2弾の中学・駅伝）
+2. 「実データで再計算・再評価」を押す（数分。終わると評価値と特徴量ごとの上積みが更新される）
+3. 「いまのセットに足す」が緑（95%区間が0より上）の特徴量の「研究で採用」を押す → 2 をもう一度 → 評価値が上がるか確認
+集計ファイルを Claude に渡す必要はなくなった（相談したいときは `data\eval_summary.json` を渡せばよい）。
+下の B3〜B4 はコマンドで同じことをする場合の手順。
+
 ## B3. 特徴量を増やすときの流れ
 1. 画面（特徴量作成）で定義を作る → 定義確認 → テスト済み → もう1人が「計算可能」にする
    （1人で使う間は `LABO_REQUIRE_SECOND_REVIEWER=false`）。

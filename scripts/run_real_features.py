@@ -13,90 +13,20 @@
 予測・順位付けは行わない。成果ラベルは世代別の件数の集計だけを出す。
 """
 import argparse
-import csv
 import json
 import os
 import sys
-from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from labo.adapters.rkm_loader import load_from_db, outcome_labels  # noqa: E402
-from labo.cohorts import builtin_cohorts, evaluate  # noqa: E402
+from labo.adapters.rkm_loader import load_from_db  # noqa: E402
 from labo.features import compute_person, make_context  # noqa: E402
-from labo.outcomes import OutcomeDefinition  # noqa: E402
 from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF  # noqa: E402
-from labo.catalog import builtin_definitions  # noqa: E402
-from labo.definitions import RUNNABLE_STATUSES  # noqa: E402
 from labo.quality import Options, select_runs  # noqa: E402
-from labo.store import Store  # noqa: E402
-
-
-def quantiles(vals):
-    if not vals:
-        return None
-    v = sorted(vals)
-    pick = lambda q: v[min(len(v) - 1, int(round((len(v) - 1) * q)))]  # noqa: E731
-    return {"p10": pick(0.1), "p50": pick(0.5), "p90": pick(0.9), "min": v[0], "max": v[-1]}
-
-
-def _diagnose_ambiguous(ds, evidence_keys, counter) -> None:
-    """直近N出走の境界で順序不明になった同日の出走の組み合わせを、氏名なしの型として数える。"""
-    from labo.adapters.rkm_mapping import round_class
-    by_key = {r.key.as_str(): r for r in ds.results}
-    rows = [by_key[k] for k in evidence_keys if k in by_key]
-    if len(rows) < 2:
-        counter["不明（根拠行なし）"] += 1
-        return
-    same_comp = len({r.competition_id for r in rows}) == 1
-    classes = "/".join(sorted(str(round_class(r.round_raw)) for r in rows))
-    secs = [r.seconds for r in rows if r.seconds is not None]
-    diff = max(secs) - min(secs) if len(secs) >= 2 else None
-    bucket = ("差なし" if diff == 0 else "1秒未満" if diff is not None and diff < 1
-              else "1〜10秒" if diff is not None and diff < 10 else "10秒以上" if diff is not None else "不明")
-    counter[f"{'同じ大会' if same_comp else '別の大会'}｜ラウンド {classes}｜記録の差 {bucket}"] += 1
-
-
-INITIAL_15 = {d.ref for d in builtin_definitions()}
-
-
-def research_definitions(data_dir: Path, builtin_only: bool = False):
-    """計算対象の定義と、対象外にした利用者定義（理由つき）を返す。"""
-    defs = Store(data_dir).definitions()
-    chosen, skipped = [], {}
-    for d in defs:
-        if d.builtin and builtin_only:
-            ok = d.ref in INITIAL_15
-        elif d.builtin:
-            ok = d.review_status in RUNNABLE_STATUSES
-        else:
-            ok = not builtin_only and d.review_status in RUNNABLE_STATUSES
-        if ok:
-            chosen.append(d)
-        elif not builtin_only:
-            skipped[d.ref] = f"状態が「{d.review_status}」"
-    refs = {d.ref for d in chosen}
-    changed = True
-    while changed:  # 参照先が対象外の派生特徴量は計算しない
-        changed = False
-        for d in list(chosen):
-            missing = [r for r in d.spec.get("inputs", []) if r not in refs]
-            if missing:
-                chosen.remove(d)
-                refs.discard(d.ref)
-                skipped[d.ref] = f"参照先 {', '.join(missing)} が計算対象でない"
-                changed = True
-    return chosen, skipped
-
-
-def feature_meta(d) -> dict:
-    return {"feature_id": d.feature_id, "version": d.version, "name": d.display_name,
-            "category": d.category, "unit": d.unit, "model_input": d.model_input_allowed,
-            "builtin": d.builtin, "status": d.review_status}
-
+from labo.research_job import INITIAL_15, feature_meta, research_definitions, summarize  # noqa: E402,F401
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -133,94 +63,12 @@ def main() -> int:
             print(f"  {v.feature_ref:40} {v.value!s:>10} {v.unit:3} {v.reason}  {v.note}")
         return 0
 
-    cohort = next(c for c in builtin_cohorts() if c.cohort_id == "all_with_entry_year")
+    summary = summarize(ds, hakone, rep, defs, skipped_defs, rule, ROOT / "data" / "real_features.csv")
     out_csv = ROOT / "data" / "real_features.csv"
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    feat_vals = {d.ref: [] for d in defs}
-    feat_reasons = {d.ref: Counter() for d in defs}
-    excluded = Counter()
-    decisions = Counter()
-    ambiguous = Counter()
-    with open(out_csv, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.writer(f)
-        w.writerow(["# 実データ（非公開）。チームPCの外に出さないこと。予測・順位ではありません"])
-        w.writerow(["person_id", "name", "hs_entry_fy", "cutoff"] + [d.ref for d in defs])
-        for pid in sorted(ds.athletes):
-            ath = ds.athletes[pid]
-            ok, why = evaluate(cohort, ds, ath, rule)
-            if not ok:
-                excluded[why] += 1
-                continue
-            ctx = make_context(ds, ath, rule, Options())
-            for d in select_runs(ds, pid, "5000m", ctx.cutoff, ctx.hs)[1]:
-                decisions[(d.decision, d.reason)] += 1
-            vals = compute_person(ds, ath, defs, rule)
-            for v in vals:
-                if v.reason == "ambiguous_order" and v.feature_ref.startswith("latest3"):
-                    _diagnose_ambiguous(ds, v.evidence, ambiguous)
-                feat_reasons[v.feature_ref][v.reason] += 1
-                if v.value is not None:
-                    feat_vals[v.feature_ref].append(v.value)
-            w.writerow([pid, ath.name, ath.hs_entry_fiscal_year, ctx.cutoff]
-                       + ["" if v.value is None else v.value for v in vals])
-
-    # 成果ラベル（世代別の件数のみ）
-    od = OutcomeDefinition()
-    today = datetime.now(timezone.utc).date()
-    labels = Counter()
-    unknown_reasons = Counter()
-    hakone_gaps = Counter()
-    by_person = {}
-    for lg in hakone.legs:
-        by_person.setdefault(lg.person_id, []).append(lg)
-    for pid, years in hakone.run_years.items():
-        for y in years or []:
-            recs = [lg for lg in by_person.get(pid, []) if lg.edition_fy == y - 1]
-            if not recs:
-                hakone_gaps[(str(y), "箱根本戦の記録なし")] += 1
-            elif not any(lg.official_rank is not None or lg.reference_only for lg in recs):
-                hakone_gaps[(str(y), "記録はあるが区間順位なし")] += 1
-    all_labels = outcome_labels(ds, hakone, od, today)
-    for pid, ath in ds.athletes.items():
-        if ath.hs_entry_fiscal_year is None:
-            labels[("入学年度不明", "unknown")] += 1
-            continue
-        lab = all_labels[pid]
-        labels[(str(ath.hs_entry_fiscal_year), lab.label)] += 1
-        if lab.label == "unknown":
-            reason = lab.reason.split("：")[0].split(":")[0]
-            if reason.startswith("区間順位が未取り込み"):
-                reason = "出走年にあるのに箱根本戦の区間記録が見つからない年がある"
-            unknown_reasons[(str(ath.hs_entry_fiscal_year), reason)] += 1
-
-    n_in = len(ds.athletes) - sum(excluded.values())
-    summary = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "cutoff": rule.label, "dataset": ds.label,
-        "load": {"persons": rep.persons, "result_rows": rep.results, "entry_year_reasons": rep.entry_year,
-                 "duplicate_links": rep.duplicate_links, "date_maybe_first_day_rows": rep.date_maybe_first_day,
-                 "excluded_rows": rep.excluded_rows, "entry_year_conflicts": rep.entry_conflicts,
-                 "hs_ekiden": rep.ekiden,
-                 "hs_ekiden_names": {k: dict(sorted(v.items(), key=lambda t: -t[1])[:30])
-                                     for k, v in rep.ekiden_names.items()},
-                 "hakone_legs": len(hakone.legs),
-                 "hakone_supplement": {"used": hakone.supplement_used, "rejected": hakone.supplement_rejected},
-                 "hakone_ambiguous_records": hakone.ambiguous_records},
-        "cohort": {"included": n_in, "excluded": dict(excluded)},
-        "decisions_5000m": {f"{k[0]}:{k[1]}": v for k, v in decisions.most_common()},
-        "features": {d.ref: {**feature_meta(d), "non_null": len(feat_vals[d.ref]),
-                             "reasons": dict(feat_reasons[d.ref]),
-                             "quantiles": quantiles(feat_vals[d.ref])} for d in defs},
-        "features_skipped": skipped_defs,
-        "outcome_labels_by_entry_fy": {f"{k[0]}:{k[1]}": v for k, v in sorted(labels.items())},
-        "outcome_unknown_reasons": {f"{k[0]}:{k[1]}": v for k, v in sorted(unknown_reasons.items())},
-        "outcome_definition": od.ref,
-        "hakone_gaps_by_run_year": {f"{k[0]}:{k[1]}": v for k, v in sorted(hakone_gaps.items())},
-        "ambiguous_order_patterns": {k: v for k, v in ambiguous.most_common()},
-    }
+    n_in, excluded = summary["cohort"]["included"], summary["cohort"]["excluded"]
     out_json = ROOT / "data" / "real_summary.json"
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-    print(f"対象 {n_in}人（除外 {dict(excluded)}）")
+    print(f"対象 {n_in}人（除外 {excluded}）")
     print(f"ローカル専用（氏名あり・共有しない）: {out_csv}")
     print(f"共有用の集計（氏名・IDなし）: {out_json}")
     return 0

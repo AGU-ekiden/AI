@@ -2,7 +2,7 @@
 // 特徴量ラボ UI。データは textContent でのみ描画する（innerHTML は使わない）。
 
 const main = document.getElementById("main");
-const state = { user: null, view: "home", overview: null, selected: new Set(), resultRun: null, pollTimer: null };
+const state = { user: null, view: "research", overview: null, selected: new Set(), resultRun: null, pollTimer: null };
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -37,7 +37,7 @@ function readOnlyNotice() {
   return state.user && !state.user.can_write
     ? h("div", { class: "notice" }, "閲覧のみの権限です。保存・状態変更・計算実行はできません。") : null;
 }
-function render(...nodes) { main.replaceChildren(...nodes); main.focus(); }
+function render(...nodes) { main.replaceChildren(...nodes.filter((n) => n !== null && n !== undefined)); main.focus(); }
 function loading(msg) { render(h("p", { class: "loading", role: "status" }, msg || "読み込み中…")); }
 function errorBox(e) { return h("div", { class: "error", role: "alert" }, String(e.message || e)); }
 function empty(msg) { return h("div", { class: "empty" }, msg); }
@@ -331,7 +331,7 @@ async function viewRun() {
 }
 
 function watchRun(runId, box) {
-  clearInterval(state.pollTimer);
+  clearInterval(state.pollTimer); clearTimeout(state.pollTimer);
   const prog = h("progress", { max: 1, value: 0, "aria-label": "進捗" });
   const label = h("p", { "aria-live": "polite" });
   const btns = h("div", { class: "row" });
@@ -508,12 +508,146 @@ function decisionButton(r) {
   } }, "メモ");
 }
 
+// ---------- 研究状況 ----------
+const num3 = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v))) ? "—" : Number(v).toFixed(3);
+const sign3 = (v) => (v === "" || v === null || v === undefined) ? "—" : (Number(v) >= 0 ? "+" : "−") + Math.abs(Number(v)).toFixed(3);
+const when = (v) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? v : d.toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" }); };
+const pct = (v) => (v === "" || v === null || v === undefined) ? "—" : `${(Number(v) * 100).toFixed(0)}%`;
+
+function deltaCell(v, lo, hi, scale) {
+  if (v === "" || v === null || v === undefined) return h("div", { class: "muted" }, "—");
+  const pos = (x) => `${Math.max(0, Math.min(100, 50 + (Number(x) / scale) * 50))}%`;
+  const bar = h("span", { class: "bar" + (Number(lo) > 0 ? " sure" : Number(v) > 0 ? " pos" : "") });
+  const a = Math.min(50, parseFloat(pos(v))), b = Math.max(50, parseFloat(pos(v)));
+  bar.style.left = `${a}%`; bar.style.width = `${Math.max(1, b - a)}%`;
+  const track = h("span", { class: "track" }, h("span", { class: "zero" }), bar);
+  if (lo !== "" && hi !== "" && lo !== undefined) {
+    const ci = h("span", { class: "ci" }); ci.style.left = pos(lo);
+    ci.style.width = `${Math.max(1, parseFloat(pos(hi)) - parseFloat(pos(lo)))}%`; track.append(ci);
+  }
+  const title = lo !== "" && lo !== undefined ? `95%区間 ${sign3(lo)}〜${sign3(hi)}` : "";
+  return h("div", { title }, h("div", { class: "delta" }, h("span", { class: "num small" }, sign3(v)), track),
+    title ? h("div", { class: "muted small" }, title) : null);
+}
+
+async function setStatus(ref, to, comment) {
+  await api("/api/features/status", { ref, to, comment });
+}
+
+async function viewResearch() {
+  loading();
+  const d = await api("/api/research");
+  const t = d.tables, job = d.job, canWrite = state.user && state.user.can_write;
+  const running = job.state === "running";
+  const head = h("div", { class: "card" },
+    h("div", { class: "row" },
+      h("strong", {}, running ? `再計算・再評価を実行中：${job.message}` : job.state === "failed" ? job.message
+        : job.state === "done" ? `前回の実行：${when(job.finished_at)} 完了` : "実データで特徴量を計算し、研究評価までまとめて実行します。"),
+      canWrite && d.can_run ? h("button", { class: "primary", type: "button", disabled: running, onclick: async (e) => {
+        e.target.disabled = true;
+        try { await api("/api/research/run", {}); viewResearch(); } catch (err) { head.append(errorBox(err)); e.target.disabled = false; }
+      } }, "実データで再計算・再評価") : null),
+    !d.can_run ? h("p", { class: "muted" }, "合成データで起動中のため実行できません（チームPCで LABO_DATA_SOURCE=rkm で起動）。") : null,
+    t ? h("p", { class: "muted" }, `集計 ${when(t._meta.summary_at)}／評価 ${t._meta.eval_at ? when(t._meta.eval_at) : "未実行"}／締切 ${t._meta.cutoff || ""}`) : null);
+  if (running) state.pollTimer = setTimeout(() => { if (state.view === "research") viewResearch(); }, 4000);
+  if (!t) {
+    render(h("h1", {}, "研究状況"), readOnlyNotice(), head,
+      empty("まだ集計がありません。「実データで再計算・再評価」を押すか、scripts/run_real_features.py と run_evaluation.py を実行してください。"));
+    return;
+  }
+  const sc = Object.fromEntries((t.eval_score || []).map((r) => [r.metric, r.value]));
+  const evalCard = t.eval_score ? h("div", { class: "card" },
+    h("h2", {}, "研究評価（世代順の検証での PR-AUC）"),
+    h("p", { class: "muted" }, "高いほど達成者を上位にまとめられる。各年度の人はそれより前の世代だけで学習。追跡中・不明は使わない。2018年度入学以降は最終確認用に取り置き。"),
+    h("div", { class: "grid" },
+      h("div", { class: "stat" }, h("div", { class: "lbl" }, `評価値（基準＋${Number(sc["使った特徴量の数"] || 1) - 1}件のセット）`), h("div", { class: "num" }, num3(sc["評価値（PR-AUC）"]))),
+      h("div", { class: "stat" }, h("div", { class: "lbl" }, "基準（5000mベストのみ）"), h("div", { class: "num" }, num3(sc["基準（5000mベストのみ）"]))),
+      h("div", { class: "stat" }, h("div", { class: "lbl" }, "上積み"), h("div", { class: "num" }, sign3(sc["上積み"])),
+        h("div", { class: "ci" }, `95%区間 ${sign3(sc["上積み95%区間・下"])}〜${sign3(sc["上積み95%区間・上"])}`)),
+      h("div", { class: "stat" }, h("div", { class: "lbl" }, "偶然の水準（達成者の割合）"), h("div", { class: "num" }, num3(sc["達成の割合（偶然の水準）"])),
+        h("div", { class: "ci" }, `評価 ${sc["評価した人数"]}人・達成 ${sc["うち達成"]}人`)))) : null;
+
+  // 特徴量ごとの上積みと状態
+  const evalBy = new Map((t.eval_features || []).map((r) => [r.ref, r]));
+  const rows = d.features.filter((f) => f.ref !== "best_5000_s@1").map((f) => ({ f, e: evalBy.get(f.ref) }));
+  const key = (x) => { const e = x.e; if (!e) return -9; return Number(e.add_to_set !== "" ? e.add_to_set : e.add_to_baseline); };
+  rows.sort((a, b) => key(b) - key(a));
+  const scale = Math.max(0.02, ...rows.flatMap(({ e }) => e ? [e.add_low, e.add_high, e.set_low, e.set_high, e.add_to_baseline, e.add_to_set]
+    .filter((x) => x !== "" && x !== undefined).map((x) => Math.abs(Number(x))) : []));
+  const action = (f, e) => {
+    if (!canWrite) return null;
+    const btn = (label, to, comment) => h("button", { type: "button", onclick: async (ev) => {
+      ev.target.disabled = true;
+      try { await setStatus(f.ref, to, comment); viewResearch(); } catch (err) { ev.target.replaceWith(errorBox(err)); }
+    } }, label);
+    const gain = e ? (e.add_to_set !== "" ? e.add_to_set : e.add_to_baseline) : "";
+    if (["提案", "定義確認", "テスト済み"].includes(f.status) && f.builtin && f.status === "テスト済み")
+      return btn("計算可能にする", "計算可能", "研究状況の画面から：実データで計算する");
+    if (f.status === "計算可能") return btn("研究で採用", "研究で採用", `研究状況の画面から：上積み ${sign3(gain)}`);
+    if (f.status === "研究で採用") return btn("セットから外す", "保留", `研究状況の画面から：抜いたときの低下 ${sign3(e ? e.drop_from_full : "")}`);
+    return h("span", { class: "muted small" }, "ファクター一覧で変更");
+  };
+  const pending = d.features.filter((f) => f.builtin && f.status === "テスト済み");
+  const featCard = h("div", { class: "card" },
+    h("h2", {}, "特徴量ごとの上積みと状態"),
+    h("p", { class: "muted" }, "「いまのセットに足す」が区間ごと0より上（緑）なら「研究で採用」に。採用した特徴量は次の再評価から評価値に入る。線は95%区間。"),
+    canWrite && pending.length ? h("div", { class: "row" }, h("button", { type: "button", onclick: async (ev) => {
+      ev.target.disabled = true;
+      try { for (const f of pending) await setStatus(f.ref, "計算可能", "研究状況の画面から：まとめて計算可能に"); viewResearch(); }
+      catch (err) { ev.target.replaceWith(errorBox(err)); }
+    } }, `「テスト済み」の${pending.length}件をまとめて計算可能にする`), h("span", { class: "muted small" }, "その後「再計算・再評価」で評価に入る")) : null,
+    h("div", { class: "flist" },
+      h("div", { class: "frow fhead" }, h("div", {}, "特徴量"), h("div", {}, "状態"), h("div", {}, "いまのセットに足す／抜くと"),
+        h("div", {}, "基準に足す"), h("div", {}, "値あり"), h("div", {}, "")),
+      rows.map(({ f, e }) => h("div", { class: "frow" },
+        h("div", { class: "fname" }, h("strong", {}, f.name), h("div", { class: "muted small" }, `${f.category}・${f.ref}`)),
+        h("div", { class: "fstat" }, statusTag(f.status), !e && f.runnable ? h("span", { class: "muted small" }, " 未評価") : null),
+        h("div", { class: "fd" }, h("span", { class: "flbl" }, "いまのセットに足す"),
+          e && e.role === "セット内" ? h("div", {}, h("span", { class: "muted small" }, "抜くと "), sign3(e.drop_from_full === "" ? "" : -Number(e.drop_from_full)))
+            : e ? deltaCell(e.add_to_set, e.set_low, e.set_high, scale) : h("div", { class: "muted" }, "—")),
+        h("div", { class: "fd" }, h("span", { class: "flbl" }, "基準に足す"), e ? deltaCell(e.add_to_baseline, e.add_low, e.add_high, scale) : h("div", { class: "muted" }, "—")),
+        h("div", { class: "fcov" }, h("span", { class: "flbl" }, "値あり "), e ? pct(e.coverage) : "—"),
+        h("div", { class: "fact" }, action(f, e))))));
+
+  const hist = (t.eval_history || []).slice().reverse();
+  const histCard = hist.length ? h("details", { class: "card" }, h("summary", {}, `評価値の推移（${hist.length}回）`),
+    table(["日時", "特徴量", "評価値", "基準", "種類", "メモ"], hist.map((r) => h("tr", {},
+      h("td", {}, when(r.at)), h("td", { class: "num" }, r.n_features), h("td", { class: "num" }, num3(r.score)),
+      h("td", { class: "num" }, num3(r.baseline_score)), h("td", {}, r.kind), h("td", {}, r.note))))) : null;
+
+  // データの状況
+  const ov = t.overview || [];
+  const years = [...new Set((t.outcomes || []).map((r) => r.entry_fy))].sort();
+  const labels = ["達成", "未達成（確定）", "追跡中", "不明"];
+  const oc = (y, l) => { const r = (t.outcomes || []).find((x) => x.entry_fy === y && x.label === l); return r ? r.count : 0; };
+  const dataCard = h("div", {},
+    h("details", { class: "card" }, h("summary", {}, "主な数値"),
+      h("div", { class: "grid" }, ov.map((r) => h("div", { class: "stat" }, h("div", { class: "lbl" }, r.metric), h("div", { class: "num" }, r.value))))),
+    h("details", { class: "card" }, h("summary", {}, "箱根の成果ラベル（高校入学年度別）"),
+      table(["入学年度", ...labels], years.map((y) => h("tr", {}, h("td", {}, y), labels.map((l) => h("td", { class: "num" }, oc(y, l))))))),
+    h("details", { class: "card" }, h("summary", {}, `特徴量の値あり件数（${(t.features || []).length}件）`),
+      table(["特徴量", "値あり", "主な欠損理由", "中央値"], (t.features || []).map((r) => h("tr", {},
+        h("td", {}, r.name, h("div", { class: "muted small" }, r.model_input)), h("td", { class: "num" }, `${r.non_null}／${r.total}`),
+        h("td", {}, r.top_missing_reason || "—"), h("td", { class: "num" }, r.p50 === "" ? "—" : fmt(Number(r.p50), r.unit)))))),
+    h("details", { class: "card" }, h("summary", {}, "駅伝の取り込み"),
+      table(["内訳", "区間数"], Object.entries(t._meta.ekiden || {}).map(([k, v]) => h("tr", {}, h("td", {}, k), h("td", { class: "num" }, v)))),
+      Object.entries(t._meta.ekiden_names || {}).map(([cls, names]) => h("details", {}, h("summary", {}, `大会名：${cls}`),
+        h("ul", {}, Object.entries(names).map(([n, c]) => h("li", {}, `${n}（${c}）`)))))),
+    h("details", { class: "card" }, h("summary", {}, "5000m の記録の判定・箱根の記録欠け"),
+      table(["判定", "理由", "件数"], (t.decisions_5000m || []).map((r) => h("tr", {}, h("td", {}, r.decision), h("td", {}, r.reason), h("td", { class: "num" }, r.count)))),
+      h("h3", {}, "箱根の記録が欠けている出走年"),
+      table(["出走年", "内容", "件数"], (t.hakone_gaps || []).map((r) => h("tr", {}, h("td", {}, r.run_year), h("td", {}, r.kind), h("td", { class: "num" }, r.count))))));
+
+  render(h("h1", {}, "研究状況"), readOnlyNotice(), head, evalCard, featCard, histCard, dataCard,
+    h("p", { class: "muted small" }, "このページは集計だけを表示します（氏名・個人ごとの予測値・順位はありません）。"));
+}
+
 // ---------- ルーティング ----------
-const VIEWS = { home: viewHome, features: viewFeatures, create: viewCreate, run: viewRun,
+const VIEWS = { research: viewResearch, home: viewHome, features: viewFeatures, create: viewCreate, run: viewRun,
   results: viewResults, history: viewHistory, quality: viewQuality };
 
 async function go(view) {
-  clearInterval(state.pollTimer);
+  clearInterval(state.pollTimer); clearTimeout(state.pollTimer);
   state.view = view;
   document.querySelectorAll("#nav [data-view]").forEach((b) => {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");

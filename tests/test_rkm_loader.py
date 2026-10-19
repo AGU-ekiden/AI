@@ -118,7 +118,11 @@ class RoundOrderAndDiagnostics(unittest.TestCase):
         r = rows()
         r["grades"] = [("P1", f"2020-0{m}-01", "1", "架空高", None) for m in range(5, 9)] + \
                       [("P1", "2020-09-01", "2", "架空高", None)]  # 4件は2020年度入学、1件だけ食い違い
-        _, _, rep = build_dataset(r)
+        ds, _, rep = build_dataset(r)
+        self.assertEqual(rep.entry_year.get("majority_of_grades"), 1)   # 4/5=80%・4件 → 多数決で採用
+        self.assertEqual(ds.athletes["P1"].hs_entry_fiscal_year, 2020)
+        r["grades"] = r["grades"][:3] + [("P1", "2020-09-01", "2", "架空高", None)]  # 3/4=75% → 決めない
+        ds, _, rep = build_dataset(r)
         self.assertEqual(rep.entry_year.get("conflicting_grades"), 1)
-        self.assertEqual(rep.entry_conflicts["最多候補の割合"], {"80〜90%": 1})
-        self.assertEqual(rep.entry_conflicts["多数決（80%以上かつ3件以上）なら決まる"], {"人数": 1})
+        self.assertIsNone(ds.athletes["P1"].hs_entry_fiscal_year)
+        self.assertEqual(rep.entry_conflicts["最多候補の割合"], {"60〜80%": 1})

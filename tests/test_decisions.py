@@ -173,6 +173,14 @@ class RkmDecisions20261019(unittest.TestCase):
         conflict = rows + [(D(2021, 6, 1), "3", "洛北高")]
         self.assertEqual(infer_hs_entry_fy(conflict)[:2], (None, "conflicting_grades"))
         self.assertEqual(infer_hs_entry_fy([(D(2020, 6, 1), "2", None)])[:2], (None, "no_high_school_grade"))
+        # 多数決（利用者決定）：3件以上かつ8割以上
+        five = [(D(2020, m, 1), "1", "洛北高") for m in (5, 6, 7, 8)] + [(D(2020, 9, 1), "2", "洛北高")]
+        self.assertEqual(infer_hs_entry_fy(five), (2020, "majority_of_grades", 4))
+        tie = [(D(2020, 6, 1), "1", "洛北高"), (D(2020, 7, 1), "1", "洛北高"),
+               (D(2020, 8, 1), "2", "洛北高"), (D(2020, 9, 1), "2", "洛北高")]
+        self.assertEqual(infer_hs_entry_fy(tie)[:2], (None, "conflicting_grades"))
+        few = [(D(2020, 6, 1), "1", "洛北高"), (D(2020, 7, 1), "1", "洛北高"), (D(2020, 8, 1), "2", "洛北高")]
+        self.assertEqual(infer_hs_entry_fy(few)[:2], (None, "conflicting_grades"))  # 2/3=67%
 
     def test_cross_profile_duplicates_merged(self):
         from labo.adapters.rkm_mapping import build_duplicate_links

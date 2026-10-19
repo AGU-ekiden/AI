@@ -128,7 +128,8 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
             _diagnose_conflict(rep, entry_year_candidates(grades.get(pid, [])))
         athletes[pid] = Athlete(
             pid, name or pid, fy,
-            f"学年表記から算出（{n}件一致）" if fy is not None else f"算出不可：{why}",
+            (f"学年表記から算出（{n}件一致）" if why == "derived_from_grade"
+             else f"学年表記の多数決（{n}件・8割以上が一致）" if fy is not None else f"算出不可：{why}"),
             "derived" if fy is not None else "unknown", COVERAGE_FETCHED, False)
         hakone.run_years[pid] = parse_years(run_raw)
         hakone.entry_years[pid] = parse_years(entry_raw)

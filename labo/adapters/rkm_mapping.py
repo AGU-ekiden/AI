@@ -119,6 +119,10 @@ def entry_year_candidates(rows) -> dict[int, int]:
     return found
 
 
+MAJORITY_SHARE = 0.8
+MAJORITY_MIN_ROWS = 3
+
+
 def infer_hs_entry_fy(rows) -> tuple[Optional[int], str, int]:
     """rows: (race_date, grade_raw, affiliation_raw[, category_raw]) の並び。
     高校所属のレースの「年度 −（学年−1）」がすべて一致したときだけ入学年度とする。
@@ -136,7 +140,13 @@ def infer_hs_entry_fy(rows) -> tuple[Optional[int], str, int]:
     if not found:
         return None, "no_high_school_grade", 0
     if len(found) > 1:
-        return None, "conflicting_grades", sum(found.values())
+        # 利用者決定（2026-10-19）：高校の記録が3件以上あり、8割以上が同じ入学年度なら多数決で採用
+        total = sum(found.values())
+        fy, top = max(found.items(), key=lambda kv: kv[1])
+        if top >= MAJORITY_MIN_ROWS and top / total >= MAJORITY_SHARE \
+                and list(found.values()).count(top) == 1:
+            return fy, "majority_of_grades", top
+        return None, "conflicting_grades", total
     fy, n = next(iter(found.items()))
     return fy, "derived_from_grade", n
 

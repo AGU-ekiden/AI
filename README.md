@@ -23,7 +23,7 @@
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（89件）
+python3 -m unittest discover -s tests -t .   # テスト（95件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```
@@ -34,6 +34,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 - 実DBの監査（段階2）：`pip install -r requirements-db.txt` → `RKM_READONLY_DSN` を設定 → `python scripts/run_audit.py`。
 - 箱根の記録欠けの補完：`python scripts/fill_hakone_supplement.py`（2025年は公式記録から自動記入）。その他の年は `make_hakone_supplement.py` で記入用一覧を作り手入力（rkm は変更しない）。
 - 実データで特徴量を計算：`python scripts/run_real_features.py`（初期15特徴量＋画面で「計算可能」「研究で採用」にした利用者定義。集計 `data/real_summary.json` は氏名なし、`data/real_features.csv` は氏名あり・共有しない）。画面で見る場合は `LABO_DATA_SOURCE=rkm`。
+- 研究評価：`python scripts/run_evaluation.py`（世代順の検証での PR-AUC と、5000mベストだけの基準との差。集計 `data/eval_summary.json` のみ・個人の値は出さない。docs/evaluation_plan.md）。
 - スマホ用ダッシュボードの表：`python scripts/make_dashboard_csv.py`（`data/dashboard/` に集計CSV。氏名・IDなし）。
 - 環境変数の見本は `.env.example`（秘密値は含みません）。`data/` は git 管理外です。
 
@@ -52,7 +53,8 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 | `labo/store.py` | ファイル保存・実行ID・再開・監査ログ |
 | `labo/server.py`, `labo/web/` | ローカルWeb（認証必須） |
 | `labo/ekiden.py` | 駅伝本人区間（フェーズ2の最小部品） |
-| `labo/evaluation.py` | 将来の評価用ラベル・分割の土台（予測は未実装） |
+| `labo/evaluation.py` | 評価用ラベル・分割の土台 |
+| `labo/research_eval.py` | 研究評価（世代順の検証・PR-AUC・特徴量ごとの上積み。集計のみ） |
 | `labo/outcomes.py` | 成果ラベル hakone_leg_top@3（特徴量・母集団には渡さない） |
 | `labo/users.py` | チーム利用者の管理（CLI） |
 | `labo/adapters/rkm_readonly.py` | rkm 読み取り専用監査（本番で実行済み） |
@@ -60,6 +62,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 
 ## ドキュメント
 
+- [docs/evaluation_plan.md](docs/evaluation_plan.md) — 研究評価の方法（評価値・基準・取り置き）
 - [docs/next_steps.md](docs/next_steps.md) — 次回やること（利用者側／Claude側／確認待ち）
 - [docs/mobile_access.md](docs/mobile_access.md) — スマホから見る方法（集計ダッシュボード／VPN経由で本体）
 - [docs/check_guide.md](docs/check_guide.md) — 日付・学年・重複・箱根の確認方法

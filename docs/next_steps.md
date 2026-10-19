@@ -51,6 +51,13 @@ Excel で開き、各行の leg（区間 1〜10）と leg_rank（区間順位）
 3. `data\real_summary.json` を Claude に渡す → スマホ用ダッシュボードの表を更新
    （Claude 側は `scripts/make_dashboard_csv.py` で作る）。
 
+## B4. 研究評価（評価値を出す）
+```powershell
+python scripts/run_evaluation.py
+```
+評価値（PR-AUC）と、5000mベストだけの基準との差、特徴量ごとの上積みが表示される。`data\eval_summary.json`（集計のみ）を Claude に共有。
+特徴量を増やしたら B3 → これを再実行。方法は docs/evaluation_plan.md。
+
 ## C. Claude 側（real_summary.json を受け取った後）
 1. 欠損理由・保留理由の内訳を確認し、想定外の多さがあれば原因を特定してルールを見直す。
 2. 研究用の保存先（lab スキーマ）の作成案を最終確認 → 適用 → rkm の件数・ハッシュが不変か確認。

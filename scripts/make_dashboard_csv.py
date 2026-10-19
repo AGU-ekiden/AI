@@ -3,6 +3,7 @@
     python scripts/make_dashboard_csv.py [real_summary.json] [出力フォルダ]
 
 既定は data/real_summary.json → data/dashboard/。出力は集計だけで、氏名・IDは含まない。
+同じフォルダに eval_summary.json（scripts/run_evaluation.py の出力）があれば研究評価の表も作る。
 特徴量の行は summary に入っている定義すべて（画面で承認した利用者定義を含む）。
 """
 import csv
@@ -82,11 +83,38 @@ def build(summary: dict) -> dict[str, tuple[list[str], list[list]]]:
     }
 
 
+def build_eval(ev: dict, history: list[dict]) -> dict[str, tuple[list[str], list[list]]]:
+    """研究評価（eval_summary.json・eval_history.jsonl）の表。集計のみ。"""
+    ci = ev.get("gain_ci") or {}
+    score = [["評価値（PR-AUC）", _num(ev.get("score"))], ["基準（5000mベストのみ）", _num(ev.get("baseline_score"))],
+             ["上積み", _num(ev.get("gain_over_baseline"))], ["上積み95%区間・下", _num(ci.get("low"))],
+             ["上積み95%区間・上", _num(ci.get("high"))], ["達成の割合（偶然の水準）", _num(ev["full"].get("prevalence"))],
+             ["評価した人数", _num(ev["full"].get("n"))], ["うち達成", _num(ev["full"].get("positives"))],
+             ["使った特徴量の数", len(ev.get("features_used", []))]]
+    feats = [[p["ref"].split("@")[0], p.get("name", p["ref"]), _num(p.get("add_to_baseline")),
+              _num((p.get("add_ci") or {}).get("low")), _num((p.get("add_ci") or {}).get("high")),
+              _num(p.get("drop_from_full")), _num(p.get("coverage"))] for p in ev.get("per_feature", [])]
+    hist = [[h["generated_at"], h.get("n_features"), _num(h.get("score")), _num(h.get("baseline_score")),
+             "最終確認" if h.get("final_check") else "通常", h.get("note", "")] for h in history]
+    return {
+        "eval_score.csv": (["metric", "value"], score),
+        "eval_features.csv": (["feature_id", "name", "add_to_baseline", "add_low", "add_high",
+                               "drop_from_full", "coverage"], feats),
+        "eval_history.csv": (["at", "n_features", "score", "baseline_score", "kind", "note"], hist),
+    }
+
+
 def main() -> int:
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data" / "real_summary.json"
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "data" / "dashboard"
     out.mkdir(parents=True, exist_ok=True)
-    for name, (header, rows) in build(json.loads(src.read_text(encoding="utf-8"))).items():
+    tables = build(json.loads(src.read_text(encoding="utf-8")))
+    ev_path = src.parent / "eval_summary.json"
+    if ev_path.exists():
+        hp = src.parent / "eval_history.jsonl"
+        history = [json.loads(x) for x in hp.read_text(encoding="utf-8").splitlines() if x.strip()] if hp.exists() else []
+        tables.update(build_eval(json.loads(ev_path.read_text(encoding="utf-8")), history))
+    for name, (header, rows) in tables.items():
         _write(out / name, header, rows)
         print(f"{out / name}（{len(rows)}行）")
     return 0

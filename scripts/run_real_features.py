@@ -24,11 +24,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from labo.adapters.rkm_loader import load_from_db  # noqa: E402
-from labo.adapters.rkm_mapping import person_complete_editions  # noqa: E402
+from labo.adapters.rkm_loader import load_from_db, outcome_labels  # noqa: E402
 from labo.cohorts import builtin_cohorts, evaluate  # noqa: E402
 from labo.features import compute_person, make_context  # noqa: E402
-from labo.outcomes import OutcomeDefinition, label_person  # noqa: E402
+from labo.outcomes import OutcomeDefinition  # noqa: E402
 from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF  # noqa: E402
 from labo.definitions import RUNNABLE_STATUSES  # noqa: E402
 from labo.quality import Options, select_runs  # noqa: E402
@@ -174,16 +173,12 @@ def main() -> int:
                 hakone_gaps[(str(y), "箱根本戦の記録なし")] += 1
             elif not any(lg.official_rank is not None or lg.reference_only for lg in recs):
                 hakone_gaps[(str(y), "記録はあるが区間順位なし")] += 1
+    all_labels = outcome_labels(ds, hakone, od, today)
     for pid, ath in ds.athletes.items():
         if ath.hs_entry_fiscal_year is None:
             labels[("入学年度不明", "unknown")] += 1
             continue
-        window = od.edition_fys(ath.hs_entry_fiscal_year)
-        mine = [lg for lg in hakone.legs if lg.person_id == pid]
-        ranked = {lg.edition_fy for lg in mine if lg.official_rank is not None or lg.reference_only}
-        lab = label_person(pid, ath.hs_entry_fiscal_year, mine, definition=od, as_of=today,
-                           complete_editions=person_complete_editions(window, hakone.run_years.get(pid), ranked),
-                           linkage_checked=hakone.run_years.get(pid) is not None and hakone.entry_years.get(pid) is not None)
+        lab = all_labels[pid]
         labels[(str(ath.hs_entry_fiscal_year), lab.label)] += 1
         if lab.label == "unknown":
             reason = lab.reason.split("：")[0].split(":")[0]

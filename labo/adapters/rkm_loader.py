@@ -16,10 +16,10 @@ from typing import Iterable, Optional
 from ..model import (
     COVERAGE_FETCHED, IDENTITY_CONFIRMED, STATUS_OK, Athlete, Dataset, Result, ResultKey,
 )
-from ..outcomes import HakoneLegResult
+from ..outcomes import HakoneLegResult, OutcomeDefinition, OutcomeLabel, label_person
 from .rkm_mapping import (
     build_duplicate_links, entry_year_candidates, infer_hs_entry_fy, is_student_alliance, map_event,
-    map_status, parse_date, parse_years, round_order_of,
+    map_status, parse_date, person_complete_editions, parse_years, round_order_of,
 )
 from .rkm_readonly import SAFETY_QUERIES, UnsafeConnection, assert_readonly_sql
 
@@ -69,6 +69,28 @@ class HakoneData:
     universities: dict[str, str] = field(default_factory=dict)
     supplement_used: int = 0
     supplement_rejected: dict[str, int] = field(default_factory=dict)
+
+
+def outcome_labels(ds: Dataset, hakone: HakoneData, definition: OutcomeDefinition,
+                   as_of: date) -> dict[str, OutcomeLabel]:
+    """全員の成果ラベル。結果がそろった大会・照合済みかは Notion の出走年・エントリー年から判断する。"""
+    by_person: dict[str, list[HakoneLegResult]] = defaultdict(list)
+    for lg in hakone.legs:
+        by_person[lg.person_id].append(lg)
+    out = {}
+    for pid, ath in ds.athletes.items():
+        mine = by_person.get(pid, [])
+        if ath.hs_entry_fiscal_year is None:
+            out[pid] = label_person(pid, None, mine, definition=definition, as_of=as_of,
+                                    complete_editions=set(), linkage_checked=False)
+            continue
+        window = definition.edition_fys(ath.hs_entry_fiscal_year)
+        ranked = {lg.edition_fy for lg in mine if lg.official_rank is not None or lg.reference_only}
+        out[pid] = label_person(
+            pid, ath.hs_entry_fiscal_year, mine, definition=definition, as_of=as_of,
+            complete_editions=person_complete_editions(window, hakone.run_years.get(pid), ranked),
+            linkage_checked=hakone.run_years.get(pid) is not None and hakone.entry_years.get(pid) is not None)
+    return out
 
 
 @dataclass

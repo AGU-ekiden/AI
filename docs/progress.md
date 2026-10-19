@@ -19,7 +19,8 @@
 | 計算ジョブ（取消・再開・重複なし） | 実行確認済み | test_rerun_and_resume_do_not_duplicate |
 | Web 7画面・CSV出力・認証 | 実行確認済み | ServerTests ＋ Chromium で操作確認（PC/スマホ幅・JSエラーなし） |
 | 駅伝本人区間・区間ペース | 実装済み（部品のみ） | test_ekiden_self_leg_vs_pass_time。特徴量としては未定義 |
-| 将来評価用ラベル・世代分割 | 実装済み（土台のみ） | test_future_labels_*。予測モデルはなし |
+| 将来評価用ラベル・世代分割 | 実装済み（土台のみ） | test_future_labels_* |
+| 研究評価（世代順の検証・PR-AUC・基準比較・特徴量ごとの上積み） | 承認済み・実装済み（合成データでテスト）・**実データでは未実行** | labo/research_eval.py、scripts/run_evaluation.py、tests/test_research_eval.py。個人ごとの値は出さない |
 | AIによる定義案 | 提案のみ（段階4） | 画面に「未実装」と表示 |
 | rkm 読み取り専用監査 | 実装済み・本番で接続成功。lab_reader 用読み取りポリシーを全10表に追加済み（2026-10-19 利用者実行）・**監査実行済み（件数は参考値と完全一致：docs/audit_baseline.md）** | 利用者がチームPCで実行（docs/next_steps.md A-3） |
 | rkm → 研究用モデルの読み込み | **実データで実行確認済み（2026-10-19 第1・2回）** | labo/adapters/rkm_loader.py、tests/test_rkm_loader.py |

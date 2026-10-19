@@ -63,6 +63,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 
 ## ドキュメント
 
+- [docs/how_to_use.md](docs/how_to_use.md) — **使い方（かんたん版）**：毎回の流れと画面の使い分け
 - [docs/evaluation_plan.md](docs/evaluation_plan.md) — 研究評価の方法（評価値・基準・取り置き）
 - [docs/next_steps.md](docs/next_steps.md) — 次回やること（利用者側／Claude側／確認待ち）
 - [docs/mobile_access.md](docs/mobile_access.md) — スマホから見る方法（集計ダッシュボード／VPN経由で本体）

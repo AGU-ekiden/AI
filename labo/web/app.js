@@ -638,7 +638,14 @@ async function viewResearch() {
       h("h3", {}, "箱根の記録が欠けている出走年"),
       table(["出走年", "内容", "件数"], (t.hakone_gaps || []).map((r) => h("tr", {}, h("td", {}, r.run_year), h("td", {}, r.kind), h("td", { class: "num" }, r.count))))));
 
-  render(h("h1", {}, "研究状況"), readOnlyNotice(), head, evalCard, featCard, histCard, dataCard,
+  const guide = h("details", { class: "card" }, h("summary", {}, "使い方（はじめての方へ）"),
+    h("ol", {},
+      h("li", {}, "「テスト済み」の特徴量があれば「まとめて計算可能にする」を押す"),
+      h("li", {}, "「実データで再計算・再評価」を押して数分待つ"),
+      h("li", {}, "下の一覧で「いまのセットに足す」の棒が緑の特徴量の「研究で採用」を押す"),
+      h("li", {}, "もう一度「再計算・再評価」を押し、評価値が基準（5000mベストだけ）より上がったか見る")),
+    h("p", { class: "muted" }, "評価値は0〜1で高いほど良い。偶然なら約0.16。線（95%区間）が0をまたぐ差は偶然の範囲。新しい特徴量のアイデアは Claude に伝えるか「特徴量作成」で作る。"));
+  render(h("h1", {}, "研究状況"), readOnlyNotice(), guide, head, evalCard, featCard, histCard, dataCard,
     h("p", { class: "muted small" }, "このページは集計だけを表示します（氏名・個人ごとの予測値・順位はありません）。"));
 }
 

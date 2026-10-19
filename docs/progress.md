@@ -23,7 +23,8 @@
 | AIによる定義案 | 提案のみ（段階4） | 画面に「未実装」と表示 |
 | rkm 読み取り専用監査 | 実装済み・本番で接続成功。lab_reader 用読み取りポリシーを全10表に追加済み（2026-10-19 利用者実行）・**監査実行済み（件数は参考値と完全一致：docs/audit_baseline.md）** | 利用者がチームPCで実行（docs/next_steps.md A-3） |
 | rkm → 研究用モデルの読み込み | **実データで実行確認済み（2026-10-19 第1・2回）** | labo/adapters/rkm_loader.py、tests/test_rkm_loader.py |
-| 実データでの15特徴量計算・集計 | **実行確認済み（第1回 2026-10-19、docs/real_runs.md）** | scripts/run_real_features.py（集計は氏名・IDなし） |
+| 実データでの15特徴量計算・集計 | **実行確認済み（第1〜4回 2026-10-19、docs/real_runs.md）** |
+| 箱根の記録欠けの補完 | 実装済み・2025年分を実データで取り込み確認（90件） | reference/hakone_2025_official.tsv、scripts/fill_hakone_supplement.py | scripts/run_real_features.py（集計は氏名・IDなし） |
 | Web画面の実データ表示 | 実装済み（LABO_DATA_SOURCE=rkm） | 模擬DBで起動・表示を確認 |
 | 研究用DBスキーマ | 方針は承認済み・**未実行** | docs/migration_proposal.sql（lab_writer で実行する案） |
 | 既存rkmの不変確認（前後ハッシュ） | 「前」を記録済み（records_hash 356d362b…） | docs/audit_baseline.md。研究用保存先の作成後に「後」を確認 |

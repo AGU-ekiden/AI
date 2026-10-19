@@ -202,6 +202,14 @@ AUDIT_QUERIES: dict[str, str] = {
     "ekiden_multi_self": (
         "SELECT count(*) FROM (SELECT person_id, profile_id, record_id FROM rkm.ekiden_legs WHERE is_self = 1 "
         "GROUP BY 1, 2, 3 HAVING count(*) > 1) s"),
+    # 第4回：高校・都道府県駅伝の大会名（大会区分の判定ルールの確認用。個人情報なし）と中学の記録の量
+    "ekiden_names_non_hakone": (
+        "SELECT regexp_replace(competition_raw, '^第[0-9０-９]+回', ''), count(*), count(ekiden_leg), "
+        "count(ekiden_leg_rank), min(date), max(date) FROM rkm.records WHERE event_group = 'ekiden' "
+        "AND competition_raw NOT LIKE '%箱根%' GROUP BY 1 ORDER BY 2 DESC LIMIT 80"),
+    "junior_rows_by_event": (
+        "SELECT event, count(*), count(DISTINCT person_id) FROM rkm.records WHERE affiliation_raw LIKE '%中' "
+        "OR grade_raw LIKE '中%' OR grade_raw LIKE 'J%' GROUP BY 1 ORDER BY 2 DESC LIMIT 20"),
     "split_label_patterns": (
         "SELECT regexp_replace(coalesce(label_raw, '<NULL>'), '[0-9]', '9', 'g'), count(*) FROM rkm.splits "
         "GROUP BY 1 ORDER BY 2 DESC LIMIT 40"),

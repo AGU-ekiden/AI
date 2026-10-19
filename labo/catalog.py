@@ -107,3 +107,74 @@ def builtin_definitions() -> list[FeatureDefinition]:
            caution="大会間隔・練習頻度ではない", tests=["test_gap_median"]),
     ]
     return defs
+
+
+# ---- 第2弾：中学の記録・高校の他種目・駅伝（2026-10-19 利用者の提案）----
+# 状態は「テスト済み」。画面のファクター一覧で「計算可能」にすると実データの計算・研究評価に入る。
+_J = {"kind": "junior"}
+_EK_COLS = ["records.event_group='ekiden'・competition_raw（大会区分）", "records.ekiden_leg/ekiden_leg_rank",
+            "ekiden_legs.is_self/leg/leg_rank（records に区間が無い場合）", "高校入学年度（根拠付き）"]
+
+
+def _p2(fid, name, cat, hyp, formula, window, min_n, unit, direction, spec, missing,
+        model_input=True, caution="", event=None, cols=None):
+    d = _d(fid, name, cat, hyp, formula, window, min_n, unit, direction, spec, missing,
+           model_input=model_input, caution=caution)
+    d.event = event or spec.get("event", "駅伝")
+    d.source = "利用者の提案（中学・駅伝の影響）2026-10-19"
+    d.created_at = "2026-10-19T00:00:00+09:00"
+    d.review_status = "テスト済み"
+    if cols:
+        d.required_columns = list(cols)
+    if spec["op"] in ("ekiden_count", "ekiden_best_rank"):
+        d.exclusion = ("本人照合済みプロフィールの本人区間のみ。記録なし・棄権は除外。区間が複数で本人区間が"
+                       "決まらない行は区間順位なし。プロフィール間の同じ区間は1つにまとめる。")
+    return d
+
+
+def phase2_definitions() -> list[FeatureDefinition]:
+    jcaution = "中学の記録は掲載が少なく、記録が無い＝遅いではない（欠損は「掲載なし」）"
+    rcaution = "区間ごとに距離・出場校数が違い、出場自体が学校・地域の強さに左右される"
+    return [
+        _p2("junior_best_3000_s", "中学3000m最良", "中学", "中学時代の3000mの水準が大学での活躍と関係する。",
+            "min(J内の有効3000m)", "J（中1の4/1〜中3の3/31）", "1件以上", "秒", "小さいほど速い",
+            {"op": "min", "event": "3000m", "window": _J}, "J内0件ならnull", caution=jcaution),
+        _p2("junior3_best_3000_s", "中3年度3000m最良", "中学", "中3時点の3000mの水準。",
+            "min(中3年度の有効3000m)", "中3の4/1〜3/31", "1件以上", "秒", "小さいほど速い",
+            {"op": "min", "event": "3000m", "window": {"kind": "junior_grade", "grade": 3}},
+            "中3年度0件ならnull", caution=jcaution),
+        _p2("junior_best_1500_s", "中学1500m最良", "中学", "中学時代の1500mの水準（スピード）。",
+            "min(J内の有効1500m)", "J", "1件以上", "秒", "小さいほど速い",
+            {"op": "min", "event": "1500m", "window": _J}, "J内0件ならnull", caution=jcaution),
+        _p2("hs_best_3000_s", "H内3000m最良", "記録水準（他種目）", "高校での3000mの水準。",
+            "min(H内の有効3000m)", "H", "1件以上", "秒", "小さいほど速い",
+            {"op": "min", "event": "3000m", "window": _H}, "H内0件ならnull",
+            caution="高校で3000mを走る機会は限られる"),
+        _p2("hs_best_1500_s", "H内1500m最良", "記録水準（他種目）", "高校での1500mの水準（スピード）。",
+            "min(H内の有効1500m)", "H", "1件以上", "秒", "小さいほど速い",
+            {"op": "min", "event": "1500m", "window": _H}, "H内0件ならnull"),
+        _p2("national_hs_ekiden_best_rank", "全国高校駅伝の最高区間順位", "駅伝",
+            "全国高校駅伝で区間上位に入る力が大学駅伝につながる。",
+            "min(H内の全国高校駅伝の本人区間の区間順位)", "H（締切までに走れるのは高1の大会）", "1区間以上",
+            "位", "小さいほど上位", {"op": "ekiden_best_rank", "race": "national_hs", "window": _H},
+            "出場なし・未掲載はnull（区別しない）", caution=rcaution, cols=_EK_COLS),
+        _p2("national_hs_ekiden_legs", "全国高校駅伝の出走区間数", "駅伝", "全国高校駅伝の出場経験。",
+            "count(H内の全国高校駅伝の本人区間)", "H", "0件可", "区間", "不明",
+            {"op": "ekiden_count", "race": "national_hs", "window": _H},
+            "取得済みで該当なし=0", caution=rcaution + "。0は出場していないか未掲載", cols=_EK_COLS),
+        _p2("todofuken_hs_best_rank", "都道府県駅伝（高校）の最高区間順位", "駅伝",
+            "都道府県代表として区間上位に入る力。", "min(H内の全国都道府県対抗男子駅伝の本人区間の区間順位)",
+            "H", "1区間以上", "位", "小さいほど上位",
+            {"op": "ekiden_best_rank", "race": "todofuken", "window": _H},
+            "出場なし・未掲載はnull", caution=rcaution, cols=_EK_COLS),
+        _p2("todofuken_junior_best_rank", "都道府県駅伝（中学）の最高区間順位", "駅伝",
+            "中学生区間で区間上位に入る力。", "min(J内の全国都道府県対抗男子駅伝の本人区間の区間順位)",
+            "J", "1区間以上", "位", "小さいほど上位",
+            {"op": "ekiden_best_rank", "race": "todofuken", "window": _J},
+            "出場なし・未掲載はnull", caution=rcaution + "。" + jcaution, cols=_EK_COLS),
+        _p2("regional_hs_ekiden_best_rank", "県・地区高校駅伝の最高区間順位", "駅伝",
+            "県・地区の高校駅伝での区間順位。", "min(H内の都道府県・地区の高校駅伝の本人区間の区間順位)",
+            "H", "1区間以上", "位", "小さいほど上位",
+            {"op": "ekiden_best_rank", "race": "regional_hs", "window": _H},
+            "出場なし・未掲載はnull", caution=rcaution + "。大会ごとに出場校数が大きく違う", cols=_EK_COLS),
+    ]

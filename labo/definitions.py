@@ -30,7 +30,15 @@ TRANSITIONS = {
 ALLOWED_EVENTS = ["1500m", "3000m", "3000mSC", "5000m"]
 ALLOWED_OPS = {
     "count", "span_days", "days_since_last", "min", "median_latest_n", "iqr",
-    "pb_updates", "median_gap", "diff", "pct_change",
+    "pb_updates", "median_gap", "diff", "pct_change", "ekiden_count", "ekiden_best_rank",
+}
+# 駅伝の演算（本人区間の公式区間順位）。対象の大会区分
+EKIDEN_OPS = {"ekiden_count", "ekiden_best_rank"}
+ALLOWED_RACES = {
+    "national_hs": "全国高校駅伝",
+    "todofuken": "全国都道府県対抗男子駅伝",
+    "regional_hs": "都道府県・地区の高校駅伝",
+    "any": "上記すべて",
 }
 # 重複未解決の行が範囲内にあると null にする演算（件数・分布に依存）
 DUP_SENSITIVE_OPS = {"count", "median_latest_n", "iqr", "median_gap"}
@@ -56,6 +64,12 @@ def _check_window(w: Any) -> None:
     elif kind == "grade":
         if set(w) != {"kind", "grade"} or w["grade"] not in (1, 2):
             raise SpecError("window(grade) の grade は 1 または 2")
+    elif kind == "junior":
+        if set(w) != {"kind"}:
+            raise SpecError("window(junior) に余分な項目があります")
+    elif kind == "junior_grade":
+        if set(w) != {"kind", "grade"} or w["grade"] not in (1, 2, 3):
+            raise SpecError("window(junior_grade) の grade は 1〜3")
     else:
         raise SpecError(f"許可されていない窓: {kind!r}")
 
@@ -79,6 +93,13 @@ def validate_spec(spec: Any, known_refs: Optional[set[str]] = None) -> dict:
                 if ref not in known_refs:
                     raise SpecError(f"参照先の定義がありません: {ref}")
         return {"op": op, "inputs": list(inputs)}
+    if op in EKIDEN_OPS:
+        if set(spec) != {"op", "race", "window"}:
+            raise SpecError(f"{op} は op・race・window のみ指定できます")
+        if spec["race"] not in ALLOWED_RACES:
+            raise SpecError(f"許可されていない大会区分: {spec['race']!r}")
+        _check_window(spec["window"])
+        return {"op": op, "race": spec["race"], "window": dict(spec["window"])}
     allowed_keys = {"op", "event", "window"} | set(_INT_PARAMS)
     extra = set(spec) - allowed_keys
     if extra:

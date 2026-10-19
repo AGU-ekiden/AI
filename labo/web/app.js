@@ -219,9 +219,12 @@ async function viewCreate() {
   const op = h("select", { id: "c-op" }, data.allowed_ops.map((o) => h("option", { value: o }, o)));
   const ev = h("select", { id: "c-ev" }, data.allowed_events.map((e) => h("option", { value: e }, e)));
   const wk = h("select", { id: "c-wk" }, h("option", { value: "hs" }, "H（高1の4/1〜締切）"),
-    h("option", { value: "recent_days" }, "直近N日"), h("option", { value: "grade" }, "学年"));
+    h("option", { value: "recent_days" }, "直近N日"), h("option", { value: "grade" }, "学年"),
+    h("option", { value: "junior" }, "J（中1の4/1〜中3の3/31）"), h("option", { value: "junior_grade" }, "中学の学年"));
   const days = h("input", { type: "number", id: "c-days", min: 1, max: 1095, value: 365 });
   const grade = h("select", { id: "c-grade" }, h("option", { value: "1" }, "高1"), h("option", { value: "2" }, "高2"));
+  const jgrade = h("select", { id: "c-jgrade" }, ["1", "2", "3"].map((g) => h("option", { value: g }, `中${g}`)));
+  const race = h("select", { id: "c-race" }, Object.entries(data.allowed_races).map(([k, v]) => h("option", { value: k }, v)));
   const n = h("input", { type: "number", id: "c-n", min: 2, max: 10, value: 3 });
   const minN = h("input", { type: "number", id: "c-minn", min: 1, max: 20, value: 1 });
   const inA = h("select", { id: "c-a" }, refs.map((r) => h("option", { value: r }, r)));
@@ -235,7 +238,10 @@ async function viewCreate() {
   const buildSpec = () => {
     if (op.value === "diff" || op.value === "pct_change") return { op: op.value, inputs: [inA.value, inB.value] };
     const window = wk.value === "hs" ? { kind: "hs" } : wk.value === "recent_days"
-      ? { kind: "recent_days", days: Number(days.value) } : { kind: "grade", grade: Number(grade.value) };
+      ? { kind: "recent_days", days: Number(days.value) } : wk.value === "junior" ? { kind: "junior" }
+      : wk.value === "junior_grade" ? { kind: "junior_grade", grade: Number(jgrade.value) }
+      : { kind: "grade", grade: Number(grade.value) };
+    if (op.value === "ekiden_count" || op.value === "ekiden_best_rank") return { op: op.value, race: race.value, window };
     const spec = { op: op.value, event: ev.value, window, min_n: Number(minN.value) };
     if (op.value === "median_latest_n") spec.n = Number(n.value);
     if (op.value === "iqr") spec.min_competitions = 2;
@@ -243,7 +249,7 @@ async function viewCreate() {
     return spec;
   };
   const refresh = () => { specOut.textContent = JSON.stringify(buildSpec(), null, 1); };
-  [op, ev, wk, days, grade, n, minN, inA, inB].forEach((el) => el.addEventListener("input", refresh));
+  [op, ev, wk, days, grade, jgrade, race, n, minN, inA, inB].forEach((el) => el.addEventListener("input", refresh));
   const form = h("form", { class: "card", onsubmit: async (e) => {
     e.preventDefault();
     msg.replaceChildren();
@@ -260,6 +266,8 @@ async function viewCreate() {
   fld("c-id", "特徴量ID（英数字と_）", fid), fld("c-name", "表示名", name), fld("c-hyp", "仮説（日本語）", hyp),
   fld("c-op", "演算", op), fld("c-ev", "種目（3000mSCは3000mと別）", ev), fld("c-wk", "窓", wk),
   fld("c-days", "直近N日（窓=直近N日のとき）", days), fld("c-grade", "学年（窓=学年のとき）", grade),
+  fld("c-jgrade", "中学の学年（窓=中学の学年のとき）", jgrade),
+  fld("c-race", "駅伝の大会（ekiden_count / ekiden_best_rank）", race),
   fld("c-n", "直近N出走（median_latest_n）", n), fld("c-minn", "最小件数", minN),
   fld("c-a", "比較元（diff / pct_change）", inA), fld("c-b", "比較先（diff / pct_change）", inB),
   fld("c-unit", "単位", unit), fld("c-formula", "数式の説明", formula), fld("c-missing", "欠損処理", missing),

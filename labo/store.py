@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import cohorts as cohorts_mod
-from .catalog import builtin_definitions
+from .catalog import builtin_definitions, phase2_definitions
 from .definitions import (
     RUNNABLE_STATUSES, SECOND_REVIEW_STATUSES, TRANSITIONS, FeatureDefinition, SpecError, validate_spec,
 )
@@ -48,6 +48,8 @@ def dataset_hash(ds: Dataset) -> str:
     for link in ds.duplicate_links:
         h.update(json.dumps(asdict(link), sort_keys=True, default=str).encode())
     h.update(json.dumps(sorted(ds.competitions_national)).encode())
+    for e in sorted(ds.ekiden_runs, key=lambda e: (e.key.as_str(), e.leg or 0)):  # 駅伝なしなら従来と同じ値
+        h.update(json.dumps(asdict(e), sort_keys=True, default=str).encode())
     return h.hexdigest()[:16]
 
 
@@ -85,7 +87,7 @@ class Store:
         return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
 
     def definitions(self) -> list[FeatureDefinition]:
-        defs = builtin_definitions()
+        defs = builtin_definitions() + phase2_definitions()
         for p in sorted((self.root / "definitions").glob("*.json")):
             defs.append(FeatureDefinition.from_dict(json.loads(p.read_text(encoding="utf-8"))))
         # 状態は不変の定義本体ではなく判断履歴から導く

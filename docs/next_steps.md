@@ -51,6 +51,13 @@ Excel で開き、各行の leg（区間 1〜10）と leg_rank（区間順位）
 3. `data\real_summary.json` を Claude に渡す → スマホ用ダッシュボードの表を更新
    （Claude 側は `scripts/make_dashboard_csv.py` で作る）。
 
+## B3b. 第2弾の特徴量（中学・高校の他種目・駅伝）を有効にする
+画面のファクター一覧で次の10件を「計算可能」にしてから B3 の2〜3、B4 を実行する：
+中学3000m最良／中3年度3000m最良／中学1500m最良／H内3000m最良／H内1500m最良／全国高校駅伝の最高区間順位／
+全国高校駅伝の出走区間数／都道府県駅伝（高校）の最高区間順位／都道府県駅伝（中学）の最高区間順位／県・地区高校駅伝の最高区間順位。
+`real_summary.json` の `load.hs_ekiden_names` に、どの大会名をどの区分に入れたかが出る（大会名だけ・個人情報なし）。
+判定漏れの大会名がないか確かめたいときは `python scripts/run_audit.py`（第4回の大会名一覧 `ekiden_names_non_hakone`）。
+
 ## B4. 研究評価（評価値を出す）
 ```powershell
 python scripts/run_evaluation.py

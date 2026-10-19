@@ -74,3 +74,13 @@ def recent_window(cutoff: date, days: int) -> Window:
 def grade_window(hs_entry_fy: int, grade: int) -> Window:
     fy = hs_entry_fy + grade - 1
     return Window(fiscal_year_start(fy), fiscal_year_end(fy))
+
+
+def junior_window(hs_entry_fy: int) -> Window:
+    """J：中1の4月1日〜中3の3月31日（高校入学年度の前の3年度）。浪人・飛び級は想定しない。"""
+    return Window(fiscal_year_start(hs_entry_fy - 3), fiscal_year_end(hs_entry_fy - 1))
+
+
+def junior_grade_window(hs_entry_fy: int, grade: int) -> Window:
+    fy = hs_entry_fy - 4 + grade
+    return Window(fiscal_year_start(fy), fiscal_year_end(fy))

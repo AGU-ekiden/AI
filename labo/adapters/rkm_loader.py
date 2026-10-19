@@ -8,22 +8,25 @@
 from __future__ import annotations
 
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Iterable, Optional
 
 from ..model import (
-    COVERAGE_FETCHED, IDENTITY_CONFIRMED, STATUS_OK, Athlete, Dataset, Result, ResultKey,
+    COVERAGE_FETCHED, IDENTITY_CONFIRMED, STATUS_OK, Athlete, Dataset, EkidenRun, Result, ResultKey,
 )
 from ..outcomes import HakoneLegResult, OutcomeDefinition, OutcomeLabel, label_person
 from .rkm_mapping import (
-    build_duplicate_links, entry_year_candidates, infer_hs_entry_fy, is_student_alliance, map_event,
+    build_duplicate_links, ekiden_race_class, entry_year_candidates, infer_hs_entry_fy, is_student_alliance,
+    map_event,
     map_status, parse_date, person_complete_editions, parse_years, round_order_of,
 )
 from .rkm_readonly import SAFETY_QUERIES, UnsafeConnection, assert_readonly_sql
 
 REAL_DATA_LABEL = "実データ（rkm・読み取り専用。非公開）"
+_HS_EKIDEN = ("r.event_group = 'ekiden' AND (r.competition_raw LIKE '%高校駅伝%' OR r.competition_raw LIKE '%高等学校駅伝%' OR r.competition_raw LIKE '%都道府県%駅伝%') AND r.competition_raw NOT LIKE '%女子%'")
 
 # 全国大会（母集団 national_by_cutoff 用）。研究上の選択であり暫定（大会名の部分一致）
 NATIONAL_PATTERNS = ("全国高校総合体育大会", "全国高等学校総合体育大会", "インターハイ",
@@ -57,6 +60,13 @@ Q = {
         "JOIN rkm.records r USING (person_id, profile_id, record_id) WHERE l.is_self = 1 "
         "AND r.event_group = 'ekiden' AND r.competition_raw LIKE '%箱根%' AND r.competition_raw NOT LIKE '%予選%'"),
     "counts": "SELECT (SELECT count(*) FROM rkm.records), (SELECT count(*) FROM rkm.athletes)",
+    # 高校・都道府県駅伝の本人区間（特徴量用）。区間・区間順位が records に無ければ ekiden_legs の本人区間で補う
+    "hs_ekiden": (
+        "SELECT r.person_id, r.profile_id, r.record_id, r.date, r.competition_raw, r.ekiden_leg, "
+        "r.ekiden_leg_value, r.ekiden_leg_rank, r.status FROM rkm.records r WHERE " + _HS_EKIDEN),
+    "hs_ekiden_self_legs": (
+        "SELECT l.person_id, l.profile_id, l.record_id, l.leg, l.leg_rank, l.leg_value FROM rkm.ekiden_legs l "
+        "JOIN rkm.records r USING (person_id, profile_id, record_id) WHERE l.is_self = 1 AND " + _HS_EKIDEN),
 }
 
 
@@ -103,6 +113,8 @@ class LoadReport:
     excluded_rows: dict[str, int] = field(default_factory=dict)
     # 学年の食い違いの診断（人数）：最多候補の割合・候補の幅・多数決なら救える人数
     entry_conflicts: dict[str, dict] = field(default_factory=dict)
+    ekiden: dict[str, int] = field(default_factory=dict)  # 高校・都道府県駅伝の取り込み内訳（行数）
+    ekiden_names: dict[str, dict] = field(default_factory=dict)  # 大会区分ごとの大会名（回数を除く）の件数
 
 
 def _to_date(v) -> Optional[date]:
@@ -230,8 +242,45 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
             reference_only=alliance, source_ref=f"rkm.records:{pid}/{prof}/{rid}"))
 
     _apply_hakone_supplement(rows.get("supplement", []), athletes, hakone)
-    ds = Dataset(athletes, results, links, national, False, REAL_DATA_LABEL)
+    ds = Dataset(athletes, results, links, national, False, REAL_DATA_LABEL,
+                 ekiden_runs=_hs_ekiden(rows, athletes, mapped_profiles, rep))
     return ds, hakone, rep
+
+
+def _hs_ekiden(rows: dict, athletes: dict, mapped_profiles: set, rep: "LoadReport") -> list[EkidenRun]:
+    """高校・都道府県駅伝の本人区間。同じ人・同じ日・同じ大会区分・同じ区間はプロフィールをまたいで1つにまとめる。"""
+    self_legs: dict[tuple, list] = defaultdict(list)
+    for pid, prof, rid, leg, rank, value in rows.get("hs_ekiden_self_legs", []):
+        self_legs[(pid, prof, rid)].append((leg, rank, value))
+    out: list[EkidenRun] = []
+    seen: set[tuple] = set()
+    for pid, prof, rid, d, cname, leg, value, rank, status in sorted(rows.get("hs_ekiden", []), key=lambda t: t[:3]):
+        cls = ekiden_race_class(cname)
+        day = _to_date(d)
+        if pid not in athletes or cls is None or day is None or (pid, prof) not in mapped_profiles:
+            _bump(rep.ekiden, "対象外（人物・大会名・日付・プロフィール）")
+            continue
+        if map_status(status) != STATUS_OK:
+            _bump(rep.ekiden, "記録なし・棄権など")
+            continue
+        if leg is None:
+            cand = self_legs.get((pid, prof, rid), [])
+            if len(cand) == 1:
+                leg, rank, value = cand[0]
+            elif len(cand) > 1:
+                _bump(rep.ekiden, "本人区間が複数（曖昧）")
+                leg = rank = value = None
+        key = (pid, day, cls, leg)
+        if key in seen:
+            _bump(rep.ekiden, "重複としてまとめた")
+            continue
+        seen.add(key)
+        _bump(rep.ekiden, f"採用:{cls}" + ("" if rank is not None else "（区間順位なし）"))
+        _bump(rep.ekiden_names.setdefault(cls, {}), re.sub(r"^第[0-9０-９]+回", "", cname or ""))
+        out.append(EkidenRun(ResultKey(pid, prof, rid), day, cls, int(leg) if leg is not None else None,
+                             int(rank) if rank is not None else None,
+                             float(value) if value is not None else None))
+    return out
 
 
 SUPPLEMENT_COLUMNS = ["person_id", "name", "university", "run_year", "leg", "leg_rank",

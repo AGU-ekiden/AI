@@ -17,7 +17,7 @@ ALL = None
 
 
 def _refs(store):
-    return [d.ref for d in store.definitions() if d.builtin]
+    return [d.ref for d in store.definitions() if d.builtin and d.review_status in ("計算可能", "研究で採用")]
 
 
 class StoreTests(unittest.TestCase):
@@ -198,7 +198,8 @@ class ServerTests(unittest.TestCase):
         code, _, body = self.req("/api/overview", cookie=cookie)
         self.assertEqual(code, 200)
         self.assertTrue(json.loads(body)["dataset"]["is_synthetic"])
-        refs = [f["ref"] for f in json.loads(self.req("/api/features", cookie=cookie)[2])["features"]]
+        refs = [f["ref"] for f in json.loads(self.req("/api/features", cookie=cookie)[2])["features"]
+                if f["review_status"] == "計算可能"]
         payload = {"cohort": "all_with_entry_year@1", "cutoff": "g2_end", "features": refs}
         code, _, body = self.req("/api/runs", payload, cookie)
         self.assertEqual(code, 202)

@@ -110,6 +110,17 @@ class EkidenLeg:
     leg_distance_m: Optional[float] = None  # 年度別区間距離（確認済みのみ）
 
 
+@dataclass(frozen=True)
+class EkidenRun:
+    """高校・都道府県駅伝の本人区間（1区間1行・プロフィール間の重複はまとめ済み）。"""
+    key: ResultKey
+    run_date: date
+    race_class: str                # national_hs / todofuken / regional_hs
+    leg: Optional[int]
+    leg_rank: Optional[int]        # 公式区間順位（本人区間のみ）
+    leg_value: Optional[float]     # 区間タイム（秒）。区間距離が年で違うため特徴量には未使用
+
+
 @dataclass
 class Dataset:
     athletes: dict[str, Athlete]
@@ -118,6 +129,10 @@ class Dataset:
     competitions_national: set[str] = field(default_factory=set)  # 全国大会扱いの competition_id
     is_synthetic: bool = False
     label: str = ""
+    ekiden_runs: list[EkidenRun] = field(default_factory=list)
 
     def results_of(self, person_id: str) -> list[Result]:
         return [r for r in self.results if r.key.person_id == person_id]
+
+    def ekiden_of(self, person_id: str) -> list[EkidenRun]:
+        return [e for e in self.ekiden_runs if e.key.person_id == person_id]

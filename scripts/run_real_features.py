@@ -29,6 +29,7 @@ from labo.cohorts import builtin_cohorts, evaluate  # noqa: E402
 from labo.features import compute_person, make_context  # noqa: E402
 from labo.outcomes import OutcomeDefinition  # noqa: E402
 from labo.periods import CUTOFF_PRESETS, DEFAULT_CUTOFF  # noqa: E402
+from labo.catalog import builtin_definitions  # noqa: E402
 from labo.definitions import RUNNABLE_STATUSES  # noqa: E402
 from labo.quality import Options, select_runs  # noqa: E402
 from labo.store import Store  # noqa: E402
@@ -59,18 +60,23 @@ def _diagnose_ambiguous(ds, evidence_keys, counter) -> None:
     counter[f"{'同じ大会' if same_comp else '別の大会'}｜ラウンド {classes}｜記録の差 {bucket}"] += 1
 
 
+INITIAL_15 = {d.ref for d in builtin_definitions()}
+
+
 def research_definitions(data_dir: Path, builtin_only: bool = False):
     """計算対象の定義と、対象外にした利用者定義（理由つき）を返す。"""
     defs = Store(data_dir).definitions()
     chosen, skipped = [], {}
     for d in defs:
-        if d.builtin:
-            ok = d.review_status != "廃止"
+        if d.builtin and builtin_only:
+            ok = d.ref in INITIAL_15
+        elif d.builtin:
+            ok = d.review_status in RUNNABLE_STATUSES
         else:
             ok = not builtin_only and d.review_status in RUNNABLE_STATUSES
         if ok:
             chosen.append(d)
-        elif not d.builtin and not builtin_only:
+        elif not builtin_only:
             skipped[d.ref] = f"状態が「{d.review_status}」"
     refs = {d.ref for d in chosen}
     changed = True
@@ -105,7 +111,8 @@ def main() -> int:
     ds, hakone, rep = load_from_db()
     defs, skipped_defs = research_definitions(Path(args.data_dir), args.builtin_only)
     n_user = sum(not d.builtin for d in defs)
-    print(f"計算する特徴量 {len(defs)}件（初期 {len(defs) - n_user}・利用者定義 {n_user}）")
+    n_init = sum(d.ref in INITIAL_15 for d in defs)
+    print(f"計算する特徴量 {len(defs)}件（初期 {n_init}・第2弾 {len(defs) - n_user - n_init}・利用者定義 {n_user}）")
     for ref, why in skipped_defs.items():
         print(f"  対象外 {ref}：{why}")
 
@@ -193,6 +200,9 @@ def main() -> int:
         "load": {"persons": rep.persons, "result_rows": rep.results, "entry_year_reasons": rep.entry_year,
                  "duplicate_links": rep.duplicate_links, "date_maybe_first_day_rows": rep.date_maybe_first_day,
                  "excluded_rows": rep.excluded_rows, "entry_year_conflicts": rep.entry_conflicts,
+                 "hs_ekiden": rep.ekiden,
+                 "hs_ekiden_names": {k: dict(sorted(v.items(), key=lambda t: -t[1])[:30])
+                                     for k, v in rep.ekiden_names.items()},
                  "hakone_legs": len(hakone.legs),
                  "hakone_supplement": {"used": hakone.supplement_used, "rejected": hakone.supplement_rejected},
                  "hakone_ambiguous_records": hakone.ambiguous_records},

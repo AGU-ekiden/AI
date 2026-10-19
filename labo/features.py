@@ -9,9 +9,9 @@ from datetime import date
 from statistics import median
 from typing import Optional
 
-from .definitions import DUP_SENSITIVE_OPS, FeatureDefinition
+from .definitions import DUP_SENSITIVE_OPS, EKIDEN_OPS, FeatureDefinition
 from .model import COVERAGE_FETCHED, Athlete, Dataset
-from .periods import Window, grade_window, hs_window, recent_window
+from .periods import Window, grade_window, hs_window, junior_grade_window, junior_window, recent_window
 from .quality import EligibleRun, Options, RowDecision, select_runs
 
 MISSING_LABELS = {
@@ -27,6 +27,8 @@ MISSING_LABELS = {
     "input_null": "参照する特徴量が null",
     "nonpositive_base": "基準値が正でない",
     "cutoff_before_hs": "締切が高校観測期間より前",
+    "no_ekiden_leg": "対象の駅伝の本人区間が見つからない（出場していない・未掲載を区別しない）",
+    "no_ranked_leg": "本人区間はあるが区間順位がない",
 }
 
 
@@ -60,12 +62,15 @@ class PersonContext:
     options: Options
     _runs: dict[str, tuple[list[EligibleRun], list[RowDecision]]] = field(default_factory=dict)
 
-    def runs(self, event: str) -> tuple[list[EligibleRun], list[RowDecision]]:
-        if event not in self._runs:
-            assert self.cutoff is not None
-            self._runs[event] = select_runs(
-                self.dataset, self.athlete.person_id, event, self.cutoff, self.hs, self.options)
-        return self._runs[event]
+    def runs(self, event: str, junior: bool = False) -> tuple[list[EligibleRun], list[RowDecision]]:
+        """junior=True なら観測の下限を中1の4月1日まで広げる（中学期間の窓用）。"""
+        key = f"{event}:junior" if junior else event
+        if key not in self._runs:
+            assert self.cutoff is not None and self.hs is not None
+            lower = Window(junior_window(self.athlete.hs_entry_fiscal_year).start, self.cutoff) if junior else self.hs
+            self._runs[key] = select_runs(
+                self.dataset, self.athlete.person_id, event, self.cutoff, lower, self.options)
+        return self._runs[key]
 
 
 def quantile_linear(sorted_vals: list[float], q: float) -> float:
@@ -86,7 +91,43 @@ def _resolve_window(spec_w: dict, ctx: PersonContext) -> Optional[Window]:
         return recent_window(ctx.cutoff, spec_w["days"]).intersect(ctx.hs)
     if kind == "grade":
         return grade_window(ctx.athlete.hs_entry_fiscal_year, spec_w["grade"]).intersect(ctx.hs)
+    if kind == "junior":
+        return junior_window(ctx.athlete.hs_entry_fiscal_year)
+    if kind == "junior_grade":
+        return junior_grade_window(ctx.athlete.hs_entry_fiscal_year, spec_w["grade"])
     raise ValueError(kind)
+
+
+def _ekiden(defn: FeatureDefinition, ctx: PersonContext, window: Window, fv: "FeatureValue") -> "FeatureValue":
+    spec = defn.spec
+    race = spec["race"]
+    rows = sorted((e for e in ctx.dataset.ekiden_of(ctx.athlete.person_id)
+                   if window.contains(e.run_date) and e.run_date <= ctx.cutoff
+                   and (race == "any" or e.race_class == race)),
+                  key=lambda e: (e.run_date, e.key.as_str()))
+    if spec["op"] == "ekiden_count":
+        if ctx.athlete.coverage != COVERAGE_FETCHED:
+            fv.reason = "coverage_unknown"
+            return fv
+        fv.evidence = [e.key.as_str() for e in rows]
+        fv.evidence_count = len(rows)
+        fv.value = float(len(rows))
+        fv.note = "観測できた本人区間の数（出場機会は学校・地域で違う）"
+        return fv
+    if not rows:
+        fv.reason = "no_ekiden_leg"
+        return fv
+    ranked = [e for e in rows if e.leg_rank is not None]
+    if not ranked:
+        fv.reason = "no_ranked_leg"
+        fv.evidence = [e.key.as_str() for e in rows]
+        return fv
+    best = min(ranked, key=lambda e: (e.leg_rank, e.run_date))
+    fv.evidence = [best.key.as_str()]
+    fv.evidence_count = 1
+    fv.value = float(best.leg_rank)
+    fv.note = f"{len(ranked)}区間中の最高（{best.run_date} {best.leg}区）"
+    return fv
 
 
 def _order_known(group: list[EligibleRun]) -> bool:
@@ -144,8 +185,10 @@ def compute_one(defn: FeatureDefinition, ctx: PersonContext,
         fv.reason = "window_empty"
         return fv
     fv.period_start, fv.period_end = window.start.isoformat(), window.end.isoformat()
+    if op in EKIDEN_OPS:
+        return _ekiden(defn, ctx, window, fv)
 
-    all_runs, _ = ctx.runs(spec["event"])
+    all_runs, _ = ctx.runs(spec["event"], junior=spec["window"]["kind"].startswith("junior"))
     in_window = [r for r in all_runs if window.contains(r.run_date)]
 
     if op in DUP_SENSITIVE_OPS and any(r.duplicate_suspect for r in in_window):

@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, urlparse
 from . import synthetic
 from .cohorts import builtin_cohorts
 from .definitions import (
-    ALLOWED_EVENTS, ALLOWED_OPS, PREVIEWABLE_STATUSES, STATUSES, TRANSITIONS, SpecError,
+    ALLOWED_EVENTS, ALLOWED_OPS, ALLOWED_RACES, PREVIEWABLE_STATUSES, STATUSES, TRANSITIONS, SpecError,
 )
 from .features import MISSING_LABELS, compute_person, make_context
 from .model import Dataset
@@ -356,6 +356,7 @@ def make_handler(app: App):
                 return self._json(200, {
                     "statuses": STATUSES, "transitions": {k: sorted(v) for k, v in TRANSITIONS.items()},
                     "allowed_ops": sorted(ALLOWED_OPS), "allowed_events": ALLOWED_EVENTS,
+                    "allowed_races": ALLOWED_RACES,
                     "missing_labels": MISSING_LABELS,
                     "features": [d.to_dict() | {"missing": rates.get(d.ref)}
                                  for d in app.store.definitions()]})

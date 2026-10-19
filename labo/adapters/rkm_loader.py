@@ -1,0 +1,207 @@
+"""rkm（読み取り専用）→ 研究用モデル（labo.model.Dataset）の読み込み。
+
+対応ルールは rkm_mapping.py（根拠は docs/decisions.md・docs/audit_baseline.md）。
+- SQL は下記の固定 SELECT のみ。利用者入力は使わない。接続は READ ONLY・タイムアウト付き。
+- 書き込み可能な接続（lab_reader 以外）なら読み込みを中止する。
+- 成果（箱根）は特徴量の Dataset とは別に返し、特徴量・母集団には渡さない。
+"""
+from __future__ import annotations
+
+import os
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Iterable, Optional
+
+from ..model import (
+    COVERAGE_FETCHED, IDENTITY_CONFIRMED, STATUS_OK, Athlete, Dataset, Result, ResultKey,
+)
+from ..outcomes import HakoneLegResult
+from .rkm_mapping import (
+    build_duplicate_links, infer_hs_entry_fy, is_student_alliance, map_event, map_status,
+    parse_date, parse_years,
+)
+from .rkm_readonly import SAFETY_QUERIES, UnsafeConnection, assert_readonly_sql
+
+REAL_DATA_LABEL = "実データ（rkm・読み取り専用。非公開）"
+
+# 全国大会（母集団 national_by_cutoff 用）。研究上の選択であり暫定（大会名の部分一致）
+NATIONAL_PATTERNS = ("全国高校総合体育大会", "全国高等学校総合体育大会", "インターハイ",
+                     "全国高等学校駅伝", "全国高校駅伝", "都道府県対抗男子駅伝", "国民体育大会",
+                     "国民スポーツ大会", "日本ジュニア", "U20日本選手権", "U18日本選手権")
+
+Q = {
+    "athletes": "SELECT person_id, name, entry_years, run_years FROM rkm.athletes",
+    "profiles": "SELECT person_id, profile_id, identity_role FROM rkm.profiles",
+    "comp_range": (
+        "SELECT competition_id, min(date), max(date), count(DISTINCT date), max(competition_raw) "
+        "FROM rkm.records WHERE competition_id IS NOT NULL GROUP BY 1"),
+    "grades": (
+        "SELECT person_id, date, grade_raw, affiliation_raw, category_raw FROM rkm.records "
+        "WHERE grade_raw IS NOT NULL"),
+    "results": (
+        "SELECT person_id, profile_id, record_id, date, competition_id, competition_raw, event, "
+        "event_group, round_raw, mark_raw, mark_value, mark_unit, timing, status FROM rkm.records "
+        "WHERE event IN ('5000m', '1500m', '3000m', '3000mSC(91.4cm)')"),
+    "national_results": (
+        "SELECT person_id, profile_id, record_id, date, competition_id, competition_raw, event, "
+        "event_group, status FROM rkm.records WHERE competition_raw LIKE ANY (ARRAY["
+        + ", ".join("'%" + p + "%'" for p in NATIONAL_PATTERNS) + "])"),
+    "hakone": (
+        "SELECT person_id, profile_id, record_id, date, fiscal_year, ekiden_leg, ekiden_leg_rank, "
+        "place_raw, affiliation_raw FROM rkm.records WHERE event_group = 'ekiden' "
+        "AND competition_raw LIKE '%箱根%' AND competition_raw NOT LIKE '%予選%'"),
+    "hakone_self_legs": (
+        "SELECT l.person_id, l.profile_id, l.record_id, l.leg, l.leg_rank FROM rkm.ekiden_legs l "
+        "JOIN rkm.records r USING (person_id, profile_id, record_id) WHERE l.is_self = 1 "
+        "AND r.event_group = 'ekiden' AND r.competition_raw LIKE '%箱根%' AND r.competition_raw NOT LIKE '%予選%'"),
+    "counts": "SELECT (SELECT count(*) FROM rkm.records), (SELECT count(*) FROM rkm.athletes)",
+}
+
+
+@dataclass
+class HakoneData:
+    legs: list[HakoneLegResult] = field(default_factory=list)
+    run_years: dict[str, Optional[list[int]]] = field(default_factory=dict)
+    entry_years: dict[str, Optional[list[int]]] = field(default_factory=dict)
+    ambiguous_records: int = 0
+
+
+@dataclass
+class LoadReport:
+    persons: int = 0
+    results: int = 0
+    entry_year: dict[str, int] = field(default_factory=dict)  # 理由別人数
+    duplicate_links: int = 0
+    date_maybe_first_day: int = 0
+    excluded_rows: dict[str, int] = field(default_factory=dict)
+
+
+def _to_date(v) -> Optional[date]:
+    if v is None:
+        return None
+    if isinstance(v, date):
+        return v
+    return parse_date(str(v))
+
+
+def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData, LoadReport]:
+    """クエリ結果（Q と同じキー）から Dataset を作る。DB に依存しないのでテスト可能。"""
+    rep = LoadReport()
+    comp_range: dict[str, tuple] = {}
+    national: set[str] = set()
+    for cid, d0, d1, n_dates, name in rows["comp_range"]:
+        comp_range[cid] = (_to_date(d0), _to_date(d1), n_dates)
+        if name and any(p in name for p in NATIONAL_PATTERNS):
+            national.add(cid)
+
+    grades: dict[str, list] = defaultdict(list)
+    for pid, d, g, aff, cat in rows["grades"]:
+        grades[pid].append((_to_date(d), g, aff, cat))
+
+    athletes: dict[str, Athlete] = {}
+    hakone = HakoneData()
+    for pid, name, entry_raw, run_raw in rows["athletes"]:
+        fy, why, n = infer_hs_entry_fy(grades.get(pid, []))
+        rep.entry_year[why] = rep.entry_year.get(why, 0) + 1
+        athletes[pid] = Athlete(
+            pid, name or pid, fy,
+            f"学年表記から算出（{n}件一致）" if fy is not None else f"算出不可：{why}",
+            "derived" if fy is not None else "unknown", COVERAGE_FETCHED, False)
+        hakone.run_years[pid] = parse_years(run_raw)
+        hakone.entry_years[pid] = parse_years(entry_raw)
+    mapped_profiles = {(pid, prof) for pid, prof, _role in rows["profiles"]}
+
+    results: list[Result] = []
+    for (pid, prof, rid, d, cid, cname, event, group, rnd, mark_raw, mark_value, unit, timing,
+         status) in rows["results"]:
+        code = map_event(event, group)
+        if code is None or pid not in athletes:
+            rep.excluded_rows["unmapped_event_or_person"] = rep.excluded_rows.get("unmapped_event_or_person", 0) + 1
+            continue
+        st = map_status(status)
+        day = _to_date(d)
+        c0, c1, n_dates = comp_range.get(cid, (day, day, 1))
+        maybe_first = bool(day is not None and n_dates and n_dates > 1 and day == c0)
+        rep.date_maybe_first_day += maybe_first
+        seconds = float(mark_value) if (st == STATUS_OK and mark_value is not None and unit == "s") else None
+        checked = (st == STATUS_OK and seconds is not None and day is not None
+                   and (pid, prof) in mapped_profiles)
+        results.append(Result(
+            key=ResultKey(pid, prof, rid), event_code=code, event_group="individual",
+            competition_id=cid, competition_name=cname or "", competition_start=c0 or day,
+            competition_end=c1 or day, performed_date=day, status=st, mark_raw=mark_raw or "",
+            seconds=seconds, precision_digits={"electronic": 2, "hand": 1, "whole_seconds": 0}.get(timing),
+            timing=timing, identity=IDENTITY_CONFIRMED if (pid, prof) in mapped_profiles else "unconfirmed",
+            row_checked=checked, source_ref=f"rkm.records:{pid}/{prof}/{rid}",
+            round_raw=rnd or "", date_maybe_first_day=maybe_first,
+        ))
+    # 全国大会の結果（母集団の判定用。個人走以外の駅伝も含む。特徴量の種目には使わない）
+    for pid, prof, rid, d, cid, cname, event, group, status in rows.get("national_results", []):
+        if pid not in athletes or cid not in national or map_event(event, group) is not None:
+            continue
+        day = _to_date(d)
+        c0, c1, _n = comp_range.get(cid, (day, day, 1))
+        results.append(Result(
+            key=ResultKey(pid, prof, rid), event_code=None, event_group=group, competition_id=cid,
+            competition_name=cname or "", competition_start=c0 or day, competition_end=c1 or day,
+            performed_date=day, status=map_status(status), mark_raw="", seconds=None,
+            precision_digits=None, timing=None, identity=IDENTITY_CONFIRMED, row_checked=False,
+            source_ref=f"rkm.records:{pid}/{prof}/{rid}"))
+
+    links = build_duplicate_links(results)
+    rep.duplicate_links = len(links)
+    rep.persons, rep.results = len(athletes), len(results)
+
+    # 箱根（成果用）：同じ人・同じ年度・同じ区間はプロフィールが違っても1つにまとめる
+    self_legs: dict[tuple, list] = defaultdict(list)
+    for pid, prof, rid, leg, rank in rows["hakone_self_legs"]:
+        self_legs[(pid, prof, rid)].append((leg, rank))
+    seen: set[tuple] = set()
+    for pid, prof, rid, d, fy, leg, leg_rank, place_raw, aff in rows["hakone"]:
+        if pid not in athletes or fy is None:
+            continue
+        candidates = self_legs.get((pid, prof, rid), [])
+        if leg is None and len(candidates) > 1:
+            hakone.ambiguous_records += 1  # 本人が複数区間：自動で選ばない
+            continue
+        if leg is None and candidates:
+            leg = candidates[0][0]
+        if leg_rank is None:
+            leg_rank = next((r for lg, r in candidates if lg == leg and r is not None), None)
+        if leg is None or (pid, fy, leg) in seen:
+            continue
+        seen.add((pid, fy, leg))
+        alliance = is_student_alliance(aff, place_raw)
+        hakone.legs.append(HakoneLegResult(
+            person_id=pid, edition_fy=int(fy), race_date=_to_date(d) or date(int(fy) + 1, 1, 3),
+            leg=int(leg), official_rank=None if alliance else (int(leg_rank) if leg_rank is not None else None),
+            reference_only=alliance, source_ref=f"rkm.records:{pid}/{prof}/{rid}"))
+
+    ds = Dataset(athletes, results, links, national, False, REAL_DATA_LABEL)
+    return ds, hakone, rep
+
+
+def load_from_db(dsn_env: str = "RKM_READONLY_DSN") -> tuple[Dataset, HakoneData, LoadReport]:  # pragma: no cover
+    dsn = os.environ.get(dsn_env)
+    if not dsn:
+        raise RuntimeError(f"環境変数 {dsn_env} が未設定です")
+    import psycopg
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+    if not conninfo_to_dict(dsn).get("dbname"):
+        dsn = make_conninfo(dsn, dbname="postgres")
+    timeout = int(os.environ.get("RKM_STATEMENT_TIMEOUT_MS", "120000"))
+    out: dict[str, list] = {}
+    with psycopg.connect(dsn, connect_timeout=15) as conn:
+        conn.read_only = True
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(timeout),))
+            cur.execute(SAFETY_QUERIES["can_write_rkm"])
+            if cur.fetchone()[0] != 0:
+                raise UnsafeConnection("この接続は rkm に書き込めます。lab_reader で接続してください")
+            for name, sql in Q.items():
+                assert_readonly_sql(sql)
+                cur.execute(sql)
+                out[name] = cur.fetchall()
+        conn.rollback()
+    return build_dataset(out)

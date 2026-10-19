@@ -499,7 +499,13 @@ def build_server(host: str, port: int, data_dir: Path):
         "LABO_REQUIRE_SECOND_REVIEWER", "true").lower() != "false")
     users = UserStore(data_dir)
     secure = os.environ.get("LABO_SECURE_COOKIE", "false").lower() == "true"
-    app = App(store, synthetic.generate(), users, secure_cookie=secure)
+    if os.environ.get("LABO_DATA_SOURCE", "synthetic") == "rkm":
+        # 実データ（読み取り専用）。接続文字列は RKM_READONLY_DSN（チームPCの環境変数）
+        from .adapters.rkm_loader import load_from_db
+        dataset = load_from_db()[0]
+    else:
+        dataset = synthetic.generate()
+    app = App(store, dataset, users, secure_cookie=secure)
     return ThreadingHTTPServer((host, port), make_handler(app)), app
 
 
@@ -510,7 +516,7 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     token_path = bootstrap_admin(UserStore(data_dir), data_dir)
     srv, _ = build_server(host, port, data_dir)
-    print(f"特徴量ラボ（合成データ）: http://{host}:{port}/")
+    print(f"特徴量ラボ（{'実データ・読み取り専用' if os.environ.get('LABO_DATA_SOURCE') == 'rkm' else '合成データ'}）: http://{host}:{port}/")
     if token_path:
         print(f"初回起動のため管理者を作成しました。トークンは {token_path}（権限600）にあります。")
         print("ログイン後はこのファイルを削除してかまいません。メンバー追加: python3 -m labo.users add --name 氏名 --role editor")

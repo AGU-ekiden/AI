@@ -23,7 +23,7 @@
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（70件）
+python3 -m unittest discover -s tests -t .   # テスト（75件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```
@@ -31,7 +31,8 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 - 初回起動時に管理者が作られ、そのトークンが `data/.token`（権限600）に保存されます。ログイン後は削除して構いません。
 - 役割：`admin`（管理者）／`editor`（研究担当：定義作成・判断記録・計算実行）／`viewer`（閲覧のみ）。
 - 既定は `127.0.0.1` のみで待ち受けます。チームで使うときはチームPCで `LABO_HOST` に VPN のアドレスを指定します。インターネットへは公開しないでください。
-- 実DBの監査（段階2）：`pip install -r requirements-db.txt` → `RKM_READONLY_DSN` を設定 → `python scripts/run_audit.py`（docs/next_steps.md）。
+- 実DBの監査（段階2）：`pip install -r requirements-db.txt` → `RKM_READONLY_DSN` を設定 → `python scripts/run_audit.py`。
+- 実データで15特徴量を計算：`python scripts/run_real_features.py`（集計 `data/real_summary.json` は氏名なし、`data/real_features.csv` は氏名あり・共有しない）。画面で見る場合は `LABO_DATA_SOURCE=rkm`。
 - 環境変数の見本は `.env.example`（秘密値は含みません）。`data/` は git 管理外です。
 
 ## 構成
@@ -52,7 +53,8 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 | `labo/evaluation.py` | 将来の評価用ラベル・分割の土台（予測は未実装） |
 | `labo/outcomes.py` | 成果ラベル hakone_leg_top@3（特徴量・母集団には渡さない） |
 | `labo/users.py` | チーム利用者の管理（CLI） |
-| `labo/adapters/rkm_readonly.py` | rkm 読み取り専用監査（**未接続・未検証**） |
+| `labo/adapters/rkm_readonly.py` | rkm 読み取り専用監査（本番で実行済み） |
+| `labo/adapters/rkm_mapping.py`, `rkm_loader.py` | rkm → 研究用モデルの対応ルールと読み込み |
 
 ## ドキュメント
 

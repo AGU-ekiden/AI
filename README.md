@@ -23,7 +23,7 @@
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（75件）
+python3 -m unittest discover -s tests -t .   # テスト（77件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```
@@ -60,6 +60,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 
 - [docs/next_steps.md](docs/next_steps.md) — 次回やること（利用者側／Claude側／確認待ち）
 - [docs/check_guide.md](docs/check_guide.md) — 日付・学年・重複・箱根の確認方法
+- [docs/real_runs.md](docs/real_runs.md) — 実データでの計算の記録（集計のみ）
 - [docs/audit_baseline.md](docs/audit_baseline.md) — 実DB監査の記録（導入前の基準件数）
 - [docs/decisions.md](docs/decisions.md) — 利用者の決定事項（締切・チーム利用・推奨構成・成果定義）
 - [docs/supabase_setup.sql](docs/supabase_setup.sql) — 推奨構成の接続用ロール（利用者が実行する案）

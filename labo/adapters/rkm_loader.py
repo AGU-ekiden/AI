@@ -18,8 +18,8 @@ from ..model import (
 )
 from ..outcomes import HakoneLegResult
 from .rkm_mapping import (
-    build_duplicate_links, infer_hs_entry_fy, is_student_alliance, map_event, map_status,
-    parse_date, parse_years,
+    build_duplicate_links, entry_year_candidates, infer_hs_entry_fy, is_student_alliance, map_event,
+    map_status, parse_date, parse_years, round_order_of,
 )
 from .rkm_readonly import SAFETY_QUERIES, UnsafeConnection, assert_readonly_sql
 
@@ -75,6 +75,8 @@ class LoadReport:
     duplicate_links: int = 0
     date_maybe_first_day: int = 0
     excluded_rows: dict[str, int] = field(default_factory=dict)
+    # 学年の食い違いの診断（人数）：最多候補の割合・候補の幅・多数決なら救える人数
+    entry_conflicts: dict[str, dict] = field(default_factory=dict)
 
 
 def _to_date(v) -> Optional[date]:
@@ -83,6 +85,24 @@ def _to_date(v) -> Optional[date]:
     if isinstance(v, date):
         return v
     return parse_date(str(v))
+
+
+def _bump(d: dict, key: str) -> None:
+    d[key] = d.get(key, 0) + 1
+
+
+def _diagnose_conflict(rep: LoadReport, cand: dict[int, int]) -> None:
+    total = sum(cand.values())
+    top = max(cand.values())
+    share = top / total
+    bucket = "90%以上" if share >= 0.9 else "80〜90%" if share >= 0.8 else "60〜80%" if share >= 0.6 else "60%未満"
+    spread = max(cand) - min(cand)
+    c = rep.entry_conflicts
+    _bump(c.setdefault("最多候補の割合", {}), bucket)
+    _bump(c.setdefault("候補の幅（年）", {}), str(spread) if spread < 3 else "3以上")
+    _bump(c.setdefault("根拠の件数", {}), "1〜2件" if total <= 2 else "3〜5件" if total <= 5 else "6件以上")
+    if share >= 0.8 and top >= 3 and list(cand.values()).count(top) == 1:
+        _bump(c.setdefault("多数決（80%以上かつ3件以上）なら決まる", {}), "人数")
 
 
 def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData, LoadReport]:
@@ -104,6 +124,8 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
     for pid, name, entry_raw, run_raw in rows["athletes"]:
         fy, why, n = infer_hs_entry_fy(grades.get(pid, []))
         rep.entry_year[why] = rep.entry_year.get(why, 0) + 1
+        if why == "conflicting_grades":
+            _diagnose_conflict(rep, entry_year_candidates(grades.get(pid, [])))
         athletes[pid] = Athlete(
             pid, name or pid, fy,
             f"学年表記から算出（{n}件一致）" if fy is not None else f"算出不可：{why}",
@@ -134,7 +156,7 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
             seconds=seconds, precision_digits={"electronic": 2, "hand": 1, "whole_seconds": 0}.get(timing),
             timing=timing, identity=IDENTITY_CONFIRMED if (pid, prof) in mapped_profiles else "unconfirmed",
             row_checked=checked, source_ref=f"rkm.records:{pid}/{prof}/{rid}",
-            round_raw=rnd or "", date_maybe_first_day=maybe_first,
+            round_raw=rnd or "", date_maybe_first_day=maybe_first, round_order=round_order_of(rnd),
         ))
     # 全国大会の結果（母集団の判定用。個人走以外の駅伝も含む。特徴量の種目には使わない）
     for pid, prof, rid, d, cid, cname, event, group, status in rows.get("national_results", []):

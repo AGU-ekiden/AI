@@ -95,6 +95,30 @@ def is_high_school_row(affiliation_raw: Optional[str], category_raw: Optional[st
     return level == "high" or cat == "高校"
 
 
+ROUND_ORDER = {"prelim": 1, "semi": 2, "final": 3}
+
+
+def round_order_of(raw: Optional[str]) -> Optional[int]:
+    """同じ日の予選→準決勝→決勝の順序（別の大会どうしの順序は分からないので、同じ値になり曖昧のまま残る）。"""
+    c = round_class(raw)
+    return ROUND_ORDER.get(c) if c else None
+
+
+def entry_year_candidates(rows) -> dict[int, int]:
+    """高校所属のレースごとに出した入学年度の候補と件数（食い違いの診断用）。"""
+    from ..periods import fiscal_year_of
+    found: dict[int, int] = {}
+    for row in rows:
+        d, grade_raw, aff = row[:3]
+        cat = row[3] if len(row) > 3 else None
+        g = parse_grade(grade_raw)
+        if d is None or g is None or not is_high_school_row(aff, cat):
+            continue
+        fy = fiscal_year_of(d) - (g - 1)
+        found[fy] = found.get(fy, 0) + 1
+    return found
+
+
 def infer_hs_entry_fy(rows) -> tuple[Optional[int], str, int]:
     """rows: (race_date, grade_raw, affiliation_raw[, category_raw]) の並び。
     高校所属のレースの「年度 −（学年−1）」がすべて一致したときだけ入学年度とする。

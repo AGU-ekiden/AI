@@ -96,6 +96,7 @@ def main() -> int:
     od = OutcomeDefinition()
     today = datetime.now(timezone.utc).date()
     labels = Counter()
+    unknown_reasons = Counter()
     for pid, ath in ds.athletes.items():
         if ath.hs_entry_fiscal_year is None:
             labels[("入学年度不明", "unknown")] += 1
@@ -107,6 +108,11 @@ def main() -> int:
                            complete_editions=person_complete_editions(window, hakone.run_years.get(pid), ranked),
                            linkage_checked=hakone.run_years.get(pid) is not None and hakone.entry_years.get(pid) is not None)
         labels[(str(ath.hs_entry_fiscal_year), lab.label)] += 1
+        if lab.label == "unknown":
+            reason = lab.reason.split("：")[0].split(":")[0]
+            if reason.startswith("区間順位が未取り込み"):
+                reason = "出走年にあるのに箱根本戦の区間記録が見つからない年がある"
+            unknown_reasons[(str(ath.hs_entry_fiscal_year), reason)] += 1
 
     n_in = len(ds.athletes) - sum(excluded.values())
     summary = {
@@ -114,13 +120,15 @@ def main() -> int:
         "cutoff": rule.label, "dataset": ds.label,
         "load": {"persons": rep.persons, "result_rows": rep.results, "entry_year_reasons": rep.entry_year,
                  "duplicate_links": rep.duplicate_links, "date_maybe_first_day_rows": rep.date_maybe_first_day,
-                 "excluded_rows": rep.excluded_rows, "hakone_legs": len(hakone.legs),
+                 "excluded_rows": rep.excluded_rows, "entry_year_conflicts": rep.entry_conflicts,
+                 "hakone_legs": len(hakone.legs),
                  "hakone_ambiguous_records": hakone.ambiguous_records},
         "cohort": {"included": n_in, "excluded": dict(excluded)},
         "decisions_5000m": {f"{k[0]}:{k[1]}": v for k, v in decisions.most_common()},
         "features": {ref: {"non_null": len(feat_vals[ref]), "reasons": dict(feat_reasons[ref]),
                            "quantiles": quantiles(feat_vals[ref])} for ref in feat_vals},
         "outcome_labels_by_entry_fy": {f"{k[0]}:{k[1]}": v for k, v in sorted(labels.items())},
+        "outcome_unknown_reasons": {f"{k[0]}:{k[1]}": v for k, v in sorted(unknown_reasons.items())},
         "outcome_definition": od.ref,
     }
     out_json = ROOT / "data" / "real_summary.json"

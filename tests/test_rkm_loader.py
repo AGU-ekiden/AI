@@ -95,3 +95,30 @@ class LoaderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RoundOrderAndDiagnostics(unittest.TestCase):
+    def test_same_day_heat_and_final_are_ordered(self):
+        from labo.adapters.rkm_mapping import round_order_of
+        self.assertEqual((round_order_of("予選"), round_order_of("決勝総合"), round_order_of(None)), (1, 3, None))
+        r = rows()
+        r["results"] = [
+            ("P1", "pa", f"x{i}", d, c, "大会", "5000m", "track", rnd, m, v, "s", "electronic", None)
+            for i, (d, c, rnd, m, v) in enumerate([
+                ("2021-05-01", "C1", "決勝", "15.10.00", 910.0), ("2021-06-05", "C2", "予選", "15.00.00", 900.0),
+                ("2021-06-05", "C2", "決勝", "14.55.00", 895.0), ("2021-07-30", "IH", "決勝", "14.50.00", 890.0)])]
+        r["comp_range"] = [("C1", "2021-05-01", "2021-05-01", 1, "a"), ("C2", "2021-06-05", "2021-06-05", 1, "b"),
+                           ("IH", "2021-07-30", "2021-07-30", 1, "c")]
+        ds, _, _ = build_dataset(r)
+        v = {x.feature_ref.split("@")[0]: x for x in
+             compute_person(ds, ds.athletes["P1"], builtin_definitions(), AUG)}
+        self.assertEqual(v["latest3_5000_median_s"].value, 895.0)  # 予選→決勝の順が分かるので曖昧にならない
+
+    def test_conflict_diagnostics(self):
+        r = rows()
+        r["grades"] = [("P1", f"2020-0{m}-01", "1", "架空高", None) for m in range(5, 9)] + \
+                      [("P1", "2020-09-01", "2", "架空高", None)]  # 4件は2020年度入学、1件だけ食い違い
+        _, _, rep = build_dataset(r)
+        self.assertEqual(rep.entry_year.get("conflicting_grades"), 1)
+        self.assertEqual(rep.entry_conflicts["最多候補の割合"], {"80〜90%": 1})
+        self.assertEqual(rep.entry_conflicts["多数決（80%以上かつ3件以上）なら決まる"], {"人数": 1})

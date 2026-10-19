@@ -57,6 +57,7 @@ test_future_labels_not_zero_and_no_person_leak (tests.test_features.SafetyAndSco
 test_spec_rejects_code_and_sql (tests.test_features.SafetyAndScope.test_spec_rejects_code_and_sql) ... ok
 test_match_cases (tests.test_hakone_reference.Matching.test_match_cases) ... ok
 test_normalization (tests.test_hakone_reference.Matching.test_normalization) ... ok
+test_partial_name_for_one_name_listing (tests.test_hakone_reference.Matching.test_partial_name_for_one_name_listing) ... ok
 test_student_alliance_row (tests.test_hakone_reference.Matching.test_student_alliance_row) ... ok
 test_shape_and_ranks (tests.test_hakone_reference.ReferenceData.test_shape_and_ranks) ... ok
 test_team_totals (tests.test_hakone_reference.ReferenceData.test_team_totals) ... ok
@@ -83,5 +84,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 85 tests in 1.701s
+Ran 86 tests in 1.639s
 OK

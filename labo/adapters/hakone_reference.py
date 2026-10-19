@@ -49,13 +49,22 @@ def default_reference_paths(root: Path) -> list[Path]:
 
 
 def match(name: str, university: Optional[str], run_year: int, ref: list[dict]) -> tuple[Optional[dict], str]:
-    """(一致した行, 理由)。理由：matched / no_reference_year / name_not_found / ambiguous_name / university_mismatch"""
+    """(一致した行, 理由)。理由：matched / matched_partial_name / no_reference_year / name_not_found /
+    ambiguous_name / university_mismatch"""
     year_rows = [r for r in ref if r["run_year"] == run_year]
     if not year_rows:
         return None, "no_reference_year"
     cands = [r for r in year_rows if norm_name(r["name"]) == norm_name(name)]
     if not cands:
-        return None, "name_not_found"
+        # 公式記録では留学生などを名前の一部だけで載せることがある（例「ダンカン マイナ」→「マイナ」）。
+        # 一方が他方を含み、大学も一致して1人に決まるときだけ採用する。
+        me = norm_name(name)
+        partial = [r for r in year_rows if len(norm_name(r["name"])) >= 2 and me
+                   and (norm_name(r["name"]) in me or me in norm_name(r["name"]))
+                   and univ_match(university, r["university"])]
+        if len(partial) == 1:
+            return partial[0], "matched_partial_name"
+        return None, "ambiguous_name" if len(partial) > 1 else "name_not_found"
     by_univ = [r for r in cands if univ_match(university, r["university"])]
     if len(by_univ) == 1:
         return by_univ[0], "matched"

@@ -54,6 +54,11 @@ class Matching(unittest.TestCase):
         self.assertEqual(match("架空 太郎", "青山学院大学", 2025, self.ref)[1], "name_not_found")
         self.assertEqual(match("黒田朝日", "青山学院大学", 2024, self.ref)[1], "no_reference_year")
 
+    def test_partial_name_for_one_name_listing(self):
+        hit, why = match("ダンカン マイナ", "専修大学", 2025, self.ref)
+        self.assertEqual((why, hit["name"], hit["leg"], hit["leg_rank"]), ("matched_partial_name", "マイナ", "2", "13"))
+        self.assertEqual(match("ダンカン マイナ", "青山学院大学", 2025, self.ref)[1], "name_not_found")  # 大学不一致は採らない
+
     def test_student_alliance_row(self):
         hit, why = match("古川 大晃", "東京大学", 2025, self.ref)
         self.assertEqual(why, "matched")

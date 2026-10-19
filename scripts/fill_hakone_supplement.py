@@ -41,7 +41,12 @@ def main() -> int:
                 rows.append(blank); stats[f"公式記録なしの年（{y}）"] += 1; continue
             hit, why = match(name, univ, y, ref)
             if hit:
-                rows.append(to_supplement_row(pid, name, univ, hit)); stats["自動で記入"] += 1
+                rows.append(to_supplement_row(pid, name, univ, hit))
+                if why == "matched_partial_name":
+                    stats["自動で記入（氏名の一部一致・要目視）"] += 1
+                    review.append((y, name, univ, f"氏名の一部一致で記入 → 公式記録の「{hit['name']}」"))
+                else:
+                    stats["自動で記入"] += 1
             else:
                 rows.append(blank); stats[f"要確認：{why}"] += 1; review.append((y, name, univ, why))
     out.parent.mkdir(parents=True, exist_ok=True)

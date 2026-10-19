@@ -26,6 +26,7 @@ $env:LABO_DATA_SOURCE = "rkm"
 python -m labo.server
 ```
 初回は data\.token のトークンでログイン。VPN 内のメンバーに見せる場合は LABO_HOST に VPN のアドレスを指定。
+スマホから見る手順（集計ダッシュボード・VPN経由）は docs/mobile_access.md。
 
 ## B2. 箱根の記録欠けを補う
 2025年（第101回）は公式記録を reference/ に取り込み済み。自動で埋める：

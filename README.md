@@ -60,6 +60,7 @@ python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（�
 ## ドキュメント
 
 - [docs/next_steps.md](docs/next_steps.md) — 次回やること（利用者側／Claude側／確認待ち）
+- [docs/mobile_access.md](docs/mobile_access.md) — スマホから見る方法（集計ダッシュボード／VPN経由で本体）
 - [docs/check_guide.md](docs/check_guide.md) — 日付・学年・重複・箱根の確認方法
 - [docs/real_runs.md](docs/real_runs.md) — 実データでの計算の記録（集計のみ）
 - [docs/audit_baseline.md](docs/audit_baseline.md) — 実DB監査の記録（導入前の基準件数）

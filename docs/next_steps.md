@@ -27,7 +27,15 @@ python -m labo.server
 ```
 初回は data\.token のトークンでログイン。VPN 内のメンバーに見せる場合は LABO_HOST に VPN のアドレスを指定。
 
-## B2. 箱根の記録欠けを補う（任意）
+## B2. 箱根の記録欠けを補う
+2025年（第101回）は公式記録を reference/ に取り込み済み。自動で埋める：
+```powershell
+python scripts/fill_hakone_supplement.py      # 氏名・大学・出走年が一致した行を自動記入、残りは「要確認」と表示
+python scripts/run_real_features.py           # 取り込んで再計算
+```
+自動で決まらなかった行や、2025年以外の年は、下の手順で手入力する。
+
+### 手入力の手順
 ```powershell
 python scripts/make_hakone_supplement.py     # data\hakone_supplement.csv（氏名入り・共有しない）ができる
 ```

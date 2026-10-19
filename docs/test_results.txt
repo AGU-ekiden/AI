@@ -55,6 +55,11 @@ test_adapter_queries_are_readonly (tests.test_features.SafetyAndScope.test_adapt
 test_cohort_uses_only_info_available_at_cutoff (tests.test_features.SafetyAndScope.test_cohort_uses_only_info_available_at_cutoff) ... ok
 test_future_labels_not_zero_and_no_person_leak (tests.test_features.SafetyAndScope.test_future_labels_not_zero_and_no_person_leak) ... ok
 test_spec_rejects_code_and_sql (tests.test_features.SafetyAndScope.test_spec_rejects_code_and_sql) ... ok
+test_match_cases (tests.test_hakone_reference.Matching.test_match_cases) ... ok
+test_normalization (tests.test_hakone_reference.Matching.test_normalization) ... ok
+test_student_alliance_row (tests.test_hakone_reference.Matching.test_student_alliance_row) ... ok
+test_shape_and_ranks (tests.test_hakone_reference.ReferenceData.test_shape_and_ranks) ... ok
+test_team_totals (tests.test_hakone_reference.ReferenceData.test_team_totals) ... ok
 test_db_takes_precedence_over_supplement (tests.test_rkm_loader.CrossCompetitionAndSupplement.test_db_takes_precedence_over_supplement) ... ok
 test_hakone_supplement (tests.test_rkm_loader.CrossCompetitionAndSupplement.test_hakone_supplement) ... ok
 test_same_mark_different_competition_merged (tests.test_rkm_loader.CrossCompetitionAndSupplement.test_same_mark_different_competition_merged) ... ok
@@ -78,5 +83,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 80 tests in 1.739s
+Ran 85 tests in 1.701s
 OK

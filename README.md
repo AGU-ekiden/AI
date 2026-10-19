@@ -23,7 +23,7 @@
 依存パッケージはありません（Python 3.11 以上・標準ライブラリのみ。3.13.16 で確認）。
 
 ```bash
-python3 -m unittest discover -s tests -t .   # テスト（61件）
+python3 -m unittest discover -s tests -t .   # テスト（66件）
 python3 -m labo.server                        # http://127.0.0.1:8765/
 python3 -m labo.users add --name 氏名 --role editor   # メンバー追加（トークンは一度だけ表示）
 ```

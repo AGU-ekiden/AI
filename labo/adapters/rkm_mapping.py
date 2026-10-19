@@ -66,7 +66,7 @@ def parse_grade(raw: Optional[str]) -> Optional[int]:
     if not raw:
         return None
     s = unicodedata.normalize("NFKC", raw).strip()
-    m = re.match(r"^(?:高校?)?\s*([1-3])\s*(?:年生?)?\s*\+?$", s)
+    m = re.match(r"^(?:高校?|H)?\s*([1-3])\s*(?:年生?)?\s*\+?$", s)
     return int(m.group(1)) if m else None
 
 
@@ -86,15 +86,26 @@ def school_level(affiliation_raw: Optional[str]) -> Optional[str]:
     return None
 
 
+def is_high_school_row(affiliation_raw: Optional[str], category_raw: Optional[str] = None) -> bool:
+    """所属名の末尾（○○高）か、年次ベストのカテゴリー「高校」で高校と判定。大学・中学の手がかりと矛盾すれば False。"""
+    level = school_level(affiliation_raw)
+    cat = (category_raw or "").strip()
+    if level in ("univ", "junior") or cat in ("大学", "中学"):
+        return False
+    return level == "high" or cat == "高校"
+
+
 def infer_hs_entry_fy(rows) -> tuple[Optional[int], str, int]:
-    """rows: (race_date, grade_raw, affiliation_raw) の並び。
+    """rows: (race_date, grade_raw, affiliation_raw[, category_raw]) の並び。
     高校所属のレースの「年度 −（学年−1）」がすべて一致したときだけ入学年度とする。
     戻り値 (入学年度, 理由, 根拠件数)。食い違いは推測で選ばず None。"""
     from ..periods import fiscal_year_of
     found: dict[int, int] = {}
-    for d, grade_raw, aff in rows:
+    for row in rows:
+        d, grade_raw, aff = row[:3]
+        cat = row[3] if len(row) > 3 else None
         g = parse_grade(grade_raw)
-        if d is None or g is None or school_level(aff) != "high":
+        if d is None or g is None or not is_high_school_row(aff, cat):
             continue
         fy = fiscal_year_of(d) - (g - 1)
         found[fy] = found.get(fy, 0) + 1
@@ -106,10 +117,36 @@ def infer_hs_entry_fy(rows) -> tuple[Optional[int], str, int]:
     return fy, "derived_from_grade", n
 
 
-# ---- 複数プロフィールの重複（利用者決定 2026-10-19）：同一人物・同日・同種目・同記録表記は1つにまとめる ----
-def build_duplicate_links(results) -> list:
-    """labo.model.Result の並びから DuplicateLink を作る。代表は profile_id/record_id の辞書順で最小（決定的）。
-    同じプロフィール内の同日同記録（予選・決勝が同タイム等）はまとめない。"""
+# ---- ラウンドの正規化（同じレースの別表示を見分けるため） ----
+def round_class(raw: Optional[str]) -> Optional[str]:
+    """'prelim'（予選）/ 'semi'（準決勝）/ 'final'（決勝・タイムレース等の1本のレース）/ None（不明・空）。
+    「総合結果」「一覧」などの表示の違いは区別しない。"""
+    import unicodedata
+    if raw is None:
+        return None
+    s = unicodedata.normalize("NFKC", raw).replace("\n", "").replace(" ", "").strip().lower()
+    for suffix in ("総合結果", "総合", "結果", "一覧"):
+        s = s.replace(suffix, "")
+    if s == "":
+        return None
+    if "準決" in s:
+        return "semi"
+    if "予" in s or s in ("h", "heat"):
+        return "prelim"
+    return "final"  # 決勝・タイムレース・レース・記録会・r・R1・Final など
+
+
+def same_race_rounds(a: Optional[str], b: Optional[str]) -> bool:
+    ca, cb = round_class(a), round_class(b)
+    return ca is None or cb is None or ca == cb
+
+
+# ---- 重複のまとめ ----
+# (1) 複数プロフィール（利用者決定 2026-10-19）：同一人物・同日・同種目・同記録表記は1つにまとめる
+# (2) 同じプロフィール内の二重表示（提案・確認待ち）：同じ大会・同日・同種目・同記録表記で、ラウンドが
+#     同じレースの別表示（例「ﾀｲﾑﾚｰｽ」と「ﾀｲﾑﾚｰｽ総合結果」）なら1つにまとめる。予選と決勝は別レース。
+def build_duplicate_links(results, merge_same_profile: bool = True) -> list:
+    """代表は profile_id/record_id の辞書順で最小（決定的）。"""
     from ..model import DuplicateLink
     groups: dict[tuple, list] = {}
     for r in results:
@@ -118,18 +155,29 @@ def build_duplicate_links(results) -> list:
         groups.setdefault((r.key.person_id, r.performed_date, r.event_code, r.mark_raw.strip()), []).append(r)
     links = []
     for rows in groups.values():
-        if len({r.key.profile_id for r in rows}) < 2:
-            continue
         rows = sorted(rows, key=lambda r: (r.key.profile_id, r.key.record_id))
-        canonical = rows[0]
-        for r in rows[1:]:
-            if r.key.profile_id == canonical.key.profile_id:
-                continue
-            links.append(DuplicateLink(canonical.key, r.key,
-                                       "同一人物・同日・同種目・同記録表記（利用者決定 2026-10-19）", "rule"))
+        kept: list = []
+        for r in rows:
+            target = None
+            for k in kept:
+                if k.key.profile_id != r.key.profile_id:
+                    target, why = k, "同一人物・同日・同種目・同記録表記（複数プロフィール。利用者決定 2026-10-19）"
+                    break
+                if (merge_same_profile and k.competition_id is not None
+                        and k.competition_id == r.competition_id and same_race_rounds(k.round_raw, r.round_raw)):
+                    target, why = k, "同じ大会・同日・同種目・同記録表記で同じレースの別表示（同一プロフィール）"
+                    break
+            if target is None:
+                kept.append(r)
+            else:
+                links.append(DuplicateLink(target.key, r.key, why, "rule"))
     return links
 
 
 # ---- 箱根の学生連合（利用者決定 2026-10-19）：区間順位の扱いから除く ----
-def is_student_alliance(affiliation_raw: Optional[str]) -> bool:
-    return bool(affiliation_raw) and "連合" in affiliation_raw
+def is_student_alliance(affiliation_raw: Optional[str], place_raw: Optional[str] = None) -> bool:
+    """所属名に「連合」、または順位の原文が OP（オープン参加）。
+    rkm の駅伝の行は affiliation_raw が空のため、箱根本戦では place_raw の OP が主な手がかり（第3回監査で確認）。"""
+    if affiliation_raw and "連合" in affiliation_raw:
+        return True
+    return bool(place_raw) and place_raw.strip().upper() == "OP"

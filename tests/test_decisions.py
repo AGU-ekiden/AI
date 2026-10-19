@@ -190,3 +190,62 @@ class RkmDecisions20261019(unittest.TestCase):
         self.assertTrue(is_student_alliance("関東学生連合"))
         self.assertFalse(is_student_alliance("青山学院大"))
         self.assertFalse(is_student_alliance(None))
+
+
+class RkmRound2Findings(unittest.TestCase):
+    """第2回監査（2026-10-19）の所見に基づくルール。"""
+
+    def test_first_day_fallback_held_only_when_meet_spans_cutoff(self):
+        from dataclasses import replace
+        from labo.periods import hs_window
+        from labo.quality import select_runs
+        aug = CUTOFF_PRESETS["g2_aug31"]
+        cutoff = aug.resolve(2020)  # 2021-08-31
+        base = res("A", D(2021, 8, 30), 900)
+        spans = replace(base, competition_start=D(2021, 8, 30), competition_end=D(2021, 9, 1),
+                        date_maybe_first_day=True)
+        dec = select_runs(ds_of([spans]), "A", "5000m", cutoff, hs_window(2020, cutoff))[1][0]
+        self.assertEqual((dec.decision, dec.reason), ("held", "date_spans_cutoff"))
+        # 締切をまたがない大会なら、初日の可能性があっても日付をそのまま使う（利用者決定：date は実施日）
+        inside = replace(spans, competition_end=D(2021, 8, 31))
+        self.assertEqual(values(ds_of([inside]), rule=aug)["best_5000_s"].value, 900)
+
+    def test_round_class(self):
+        from labo.adapters.rkm_mapping import round_class, same_race_rounds
+        self.assertEqual(round_class("ﾀｲﾑﾚｰ\nｽ総合結果\n"), "final")
+        self.assertEqual(round_class("タイムレース決勝総合"), "final")
+        self.assertEqual(round_class("予選"), "prelim")
+        self.assertEqual(round_class("準決勝"), "semi")
+        self.assertIsNone(round_class(""))
+        self.assertTrue(same_race_rounds("ﾀｲﾑﾚｰｽ", "ﾀｲﾑﾚｰｽ総合結果"))
+        self.assertFalse(same_race_rounds("予選", "決勝"))
+
+    def test_same_profile_double_listing_merged(self):
+        from dataclasses import replace
+        from labo.adapters.rkm_mapping import build_duplicate_links
+        a = replace(res("A", D(2021, 6, 1), 930, comp="C1", rid="R1"), round_raw="ﾀｲﾑﾚｰｽ")
+        b = replace(res("A", D(2021, 6, 1), 930, comp="C1", rid="R2"), round_raw="ﾀｲﾑﾚｰｽ総合結果")
+        p = replace(res("A", D(2021, 6, 2), 940, comp="C2", rid="R3"), round_raw="予選")
+        f = replace(res("A", D(2021, 6, 2), 940, comp="C2", rid="R4"), round_raw="決勝")  # 予選と決勝が同タイム
+        links = build_duplicate_links([a, b, p, f])
+        self.assertEqual([(l.canonical, l.duplicate) for l in links], [(a.key, b.key)])
+        self.assertEqual(build_duplicate_links([a, b], merge_same_profile=False), [])
+        v = values(ds_of([a, b, p, f], links=links))
+        self.assertEqual(v["runs_5000_count"].value, 3)
+
+    def test_grade_variants_from_audit(self):
+        from labo.adapters.rkm_mapping import infer_hs_entry_fy, parse_grade
+        for raw, g in (("H3", 3), ("高校3", 3), ("３+", 3), ("1+", 1)):
+            self.assertEqual(parse_grade(raw), g, raw)
+        for raw in ("J3", "中1+", "M1", "-", "?", "96", "2000", "▲+", "2*", "4+", "6"):
+            self.assertIsNone(parse_grade(raw), raw)
+        # 所属名が無くても年次ベストのカテゴリー「高校」で高校と判定。大学カテゴリーとは矛盾扱い
+        rows = [(D(2020, 6, 1), "1", None, "高校"), (D(2021, 6, 1), "2", None, "高校"),
+                (D(2023, 6, 1), "1", "洛北高", "大学")]
+        self.assertEqual(infer_hs_entry_fy(rows), (2020, "derived_from_grade", 2))
+
+    def test_alliance_by_open_participation(self):
+        from labo.adapters.rkm_mapping import is_student_alliance
+        self.assertTrue(is_student_alliance(None, "OP"))
+        self.assertTrue(is_student_alliance(None, " op "))
+        self.assertFalse(is_student_alliance(None, "3"))

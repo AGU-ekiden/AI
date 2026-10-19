@@ -83,6 +83,10 @@ class Options:
 
 def _performed_date(r: Result, cutoff: date) -> tuple[Optional[date], Optional[str]]:
     if r.performed_date is not None:
+        # 「日付不明なら大会初日」の可能性がある行で、大会期間が締切をまたぐときは実施日と見なさない
+        if (r.date_maybe_first_day and r.competition_end is not None
+                and r.performed_date <= cutoff < r.competition_end):
+            return None, "date_spans_cutoff"
         return r.performed_date, None
     if r.competition_start is None:
         return None, "date_unknown"

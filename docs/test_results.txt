@@ -19,6 +19,11 @@ test_student_alliance_detection (tests.test_decisions.RkmDecisions20261019.test_
 test_event_map_uses_name_not_distance (tests.test_decisions.RkmMapping.test_event_map_uses_name_not_distance) ... ok
 test_no_mark_rows_are_excluded_not_zero (tests.test_decisions.RkmMapping.test_no_mark_rows_are_excluded_not_zero) ... ok
 test_status_map (tests.test_decisions.RkmMapping.test_status_map) ... ok
+test_alliance_by_open_participation (tests.test_decisions.RkmRound2Findings.test_alliance_by_open_participation) ... ok
+test_first_day_fallback_held_only_when_meet_spans_cutoff (tests.test_decisions.RkmRound2Findings.test_first_day_fallback_held_only_when_meet_spans_cutoff) ... ok
+test_grade_variants_from_audit (tests.test_decisions.RkmRound2Findings.test_grade_variants_from_audit) ... ok
+test_round_class (tests.test_decisions.RkmRound2Findings.test_round_class) ... ok
+test_same_profile_double_listing_merged (tests.test_decisions.RkmRound2Findings.test_same_profile_double_listing_merged) ... ok
 test_dns_dnf_blank_failed_zero_are_distinct (tests.test_features.EventsAndRecords.test_dns_dnf_blank_failed_zero_are_distinct) ... ok
 test_duplicate_listing_does_not_inflate (tests.test_features.EventsAndRecords.test_duplicate_listing_does_not_inflate) ... ok
 test_ekiden_self_leg_vs_pass_time (tests.test_features.EventsAndRecords.test_ekiden_self_leg_vs_pass_time) ... ok
@@ -59,5 +64,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 61 tests in 1.621s
+Ran 66 tests in 1.616s
 OK

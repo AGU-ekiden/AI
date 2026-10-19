@@ -158,6 +158,32 @@ AUDIT_QUERIES: dict[str, str] = {
     "hakone_alliance": (
         "SELECT (affiliation_raw LIKE '%連合%'), count(*), count(ekiden_leg), count(ekiden_leg_rank) "
         "FROM rkm.records WHERE competition_raw LIKE '%箱根%' GROUP BY 1"),
+    # ---- 第3回（2026-10-19 追加） ----
+    "grade_by_category": (
+        "SELECT grade_raw, category_raw, count(*) FROM rkm.records WHERE grade_raw IS NOT NULL "
+        "GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 80"),
+    "affiliation_suffix_by_category": (
+        "SELECT right(affiliation_raw, 1), category_raw, count(*) FROM rkm.records "
+        "WHERE affiliation_raw IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 60"),
+    "same_profile_same_mark_rounds": (
+        "SELECT rounds, count(*) FROM (SELECT person_id, profile_id, competition_id, date, event, mark_raw, "
+        "string_agg(coalesce(replace(round_raw, E'\\n', ''), '<NULL>'), ' | ' ORDER BY coalesce(round_raw, '')) rounds "
+        "FROM rkm.records WHERE status IS NULL AND mark_raw IS NOT NULL AND event IN ('5000m', '1500m', '3000m') "
+        "GROUP BY 1, 2, 3, 4, 5, 6 HAVING count(*) > 1) s GROUP BY 1 ORDER BY 2 DESC LIMIT 60"),
+    "date_first_day_share": (
+        "SELECT count(*) FILTER (WHERE r.date = c.d0 AND c.d1 > c.d0), count(*) FILTER (WHERE c.d1 > c.d0), count(*) "
+        "FROM rkm.records r JOIN (SELECT competition_id, min(date) d0, max(date) d1 FROM rkm.records "
+        "WHERE competition_id IS NOT NULL GROUP BY 1) c USING (competition_id) WHERE r.event = '5000m'"),
+    "hakone_main_place": (
+        "SELECT CASE WHEN place_raw ~ '^[0-9]+$' THEN '<数字>' ELSE coalesce(place_raw, '<NULL>') END, "
+        "(ekiden_leg_rank IS NULL), min(fiscal_year), max(fiscal_year), count(*) FROM rkm.records "
+        "WHERE event_group = 'ekiden' AND competition_raw LIKE '%箱根%' AND competition_raw NOT LIKE '%予選%' "
+        "GROUP BY 1, 2 ORDER BY 5 DESC"),
+    "ekiden_years_vs_hakone": (
+        "SELECT (a.run_years IS NOT NULL AND a.run_years <> '[]'), count(DISTINCT a.person_id), "
+        "count(DISTINCT h.person_id) FROM rkm.athletes a LEFT JOIN (SELECT DISTINCT person_id FROM rkm.records "
+        "WHERE event_group = 'ekiden' AND competition_raw LIKE '%箱根%' AND competition_raw NOT LIKE '%予選%') h "
+        "USING (person_id) GROUP BY 1"),
     "ekiden_self": (
         "SELECT is_self, count(*), count(leg_rank), count(leg_value), count(pass_value) "
         "FROM rkm.ekiden_legs GROUP BY 1 ORDER BY 1"),

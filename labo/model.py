@@ -75,6 +75,9 @@ class Result:
     row_checked: bool = False          # 行単位の数値妥当性・日付・出典の確認済みか
     duplicate_suspect: bool = False    # 同一本人結果の二重掲載疑い（未解決）
     source_ref: str = ""               # 原本への参照（source_sha256 等）
+    round_raw: str = ""                # ラウンドの原文（同一レースの二重表示の判定に使う）
+    # rkm.records.date は「分からない場合は大会初日」（column_docs）。初日と同じ日付の行は初日の可能性がある
+    date_maybe_first_day: bool = False
 
 
 @dataclass(frozen=True)

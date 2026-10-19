@@ -43,6 +43,17 @@ class EvaluationTests(unittest.TestCase):
         self.assertGreater(top["add_to_baseline"], 0.03)
         self.assertGreater(res["gain_ci"]["low"], 0)
 
+    def test_selected_set_and_add_to_set(self):
+        res = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig", "noise"], selected=["noise"],
+                                               bootstrap=40))
+        self.assertEqual(res["features_used"], ["best", "noise"])
+        by = {p["ref"]: p for p in res["per_feature"]}
+        self.assertFalse(by["sig"]["in_set"])
+        self.assertGreater(by["sig"]["add_to_set"], 0.03)   # いまのセットに足すと上がる
+        self.assertIn("drop_from_full", by["noise"])
+        base_only = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig"], selected=[], bootstrap=0))
+        self.assertEqual(base_only["score"], base_only["baseline_score"])
+
     def test_tracking_unknown_and_holdout_are_not_used(self):
         rows = synthetic()
         res = evaluate(rows, EvalConfig(baseline=["best"], candidates=["sig"], bootstrap=0))
@@ -104,9 +115,12 @@ class ScriptRowsTests(unittest.TestCase):
         out = mod.build_rows(ds, labels, defs, CUTOFF_PRESETS["g2_aug31"])
         self.assertEqual(len(out), 1)  # P2 は入学年度不明で対象外
         self.assertIn("best_5000_s@1", out[0].values)
-        cand, not_model = mod.choose(defs, None)
+        cand, selected, not_model = mod.choose(defs)
         self.assertNotIn("best_5000_s@1", cand)
         self.assertIn("runs_5000_count@1", not_model)
+        self.assertEqual(selected, [])  # 「研究で採用」がなければセットは基準だけ
+        self.assertEqual(mod.choose(defs, use_all=True)[1], cand)
+        self.assertEqual(mod.choose(defs, "best_5000_s@1,grade1_best_5000_s@1")[1], ["grade1_best_5000_s@1"])
 
 
 if __name__ == "__main__":

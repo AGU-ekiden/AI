@@ -74,6 +74,8 @@ class Phase2Tests(unittest.TestCase):
         self.assertEqual(ekiden_race_class(TDF), "todofuken")
         self.assertEqual(ekiden_race_class("第73回架空県高校駅伝"), "regional_hs")
         self.assertIsNone(ekiden_race_class("全国高校駅伝（女子）"))
+        self.assertEqual(ekiden_race_class("大阪高校駅伝兼全国高校駅伝大阪予選会"), "regional_hs")
+        self.assertEqual(ekiden_race_class("全国選抜招待 第20回高校駅伝弥彦大会"), "regional_hs")
         self.assertEqual(ekiden_race_class("春の高校伊那駅伝2023"), "ina")
         self.assertIsNone(ekiden_race_class("春の高校伊那駅伝（女子）"))
         self.assertIsNone(ekiden_race_class("第100回東京箱根間往復大学駅伝競走"))

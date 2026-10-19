@@ -30,7 +30,8 @@ class EvalRow:
 @dataclass
 class EvalConfig:
     baseline: list[str]
-    candidates: list[str]
+    candidates: list[str]            # 1つずつ試す特徴量（基準に足す・いまのセットに足す／抜く）
+    selected: Optional[list[str]] = None  # 評価値を出すセット（基準に加える）。None なら候補すべて
     first_test_fy: int = 2010        # これより前の世代は学習専用
     min_train_positives: int = 15    # 学習側の達成者がこれ未満の年度は評価しない
     holdout_from_fy: Optional[int] = 2018  # この年度以降は最終確認用（include_holdout で使う）
@@ -266,31 +267,40 @@ def calibration(pred, bins: int) -> list[dict]:
 
 def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] = None) -> dict:
     data = labeled(rows, cfg)
-    full = list(dict.fromkeys(cfg.baseline + cfg.candidates))
+    full = list(dict.fromkeys(cfg.baseline + (cfg.candidates if cfg.selected is None else cfg.selected)))
     base_pred = forward_chain(data, cfg.baseline, cfg)
     full_pred = forward_chain(data, full, cfg)
     base_m, full_m = _metrics(base_pred), _metrics(full_pred)
 
-    def delta(pred):
+    def delta(pred, ref_m=None):
+        ref_m = ref_m or base_m
         m = _metrics(pred)
-        if m.get("pr_auc") is None or base_m.get("pr_auc") is None:
+        if m.get("pr_auc") is None or ref_m.get("pr_auc") is None:
             return None
-        return m["pr_auc"] - base_m["pr_auc"]
+        return m["pr_auc"] - ref_m["pr_auc"]
 
     per_feature = []
     for ref in cfg.candidates:
         if ref in cfg.baseline:
             continue
         add = forward_chain(data, cfg.baseline + [ref], cfg)
-        drop = forward_chain(data, [r for r in full if r != ref], cfg)
-        dm = _metrics(drop)
-        per_feature.append({
-            "ref": ref, **(feature_info or {}).get(ref, {}),
+        item = {
+            "ref": ref, **(feature_info or {}).get(ref, {}), "in_set": ref in full,
             "add_to_baseline": delta(add),
             "add_ci": bootstrap_delta(base_pred, add, cfg.bootstrap // 5, cfg.seed),
-            "drop_from_full": (full_m["pr_auc"] - dm["pr_auc"]) if dm.get("pr_auc") is not None and full_m.get("pr_auc") is not None else None,
             "coverage": sum(r.values.get(ref) is not None for r, _ in data) / len(data) if data else None,
-        })
+        }
+        if ref in full:  # セットから抜いたら評価値がどれだけ下がるか
+            drop = forward_chain(data, [r for r in full if r != ref], cfg)
+            d = delta(drop, full_m)
+            item["drop_from_full"] = None if d is None else -d
+        elif full == cfg.baseline:  # セットが基準だけなら「いまのセットに足す」＝「基準に足す」
+            item["add_to_set"], item["add_to_set_ci"] = item["add_to_baseline"], item["add_ci"]
+        else:  # いまのセットに足したら評価値がどれだけ上がるか
+            plus = forward_chain(data, full + [ref], cfg)
+            item["add_to_set"] = delta(plus, full_m)
+            item["add_to_set_ci"] = bootstrap_delta(full_pred, plus, cfg.bootstrap // 5, cfg.seed)
+        per_feature.append(item)
     per_feature.sort(key=lambda d: -(d["add_to_baseline"] or -1e9))
 
     coef = []

@@ -91,15 +91,22 @@ def build_eval(ev: dict, history: list[dict]) -> dict[str, tuple[list[str], list
              ["上積み95%区間・上", _num(ci.get("high"))], ["達成の割合（偶然の水準）", _num(ev["full"].get("prevalence"))],
              ["評価した人数", _num(ev["full"].get("n"))], ["うち達成", _num(ev["full"].get("positives"))],
              ["使った特徴量の数", len(ev.get("features_used", []))]]
-    feats = [[p["ref"].split("@")[0], p.get("name", p["ref"]), _num(p.get("add_to_baseline")),
-              _num((p.get("add_ci") or {}).get("low")), _num((p.get("add_ci") or {}).get("high")),
-              _num(p.get("drop_from_full")), _num(p.get("coverage"))] for p in ev.get("per_feature", [])]
+    used = set(ev.get("features_used", []))
+    feats = []
+    for p in ev.get("per_feature", []):
+        in_set = p.get("in_set", p["ref"] in used)
+        set_ci = p.get("add_to_set_ci") or {}
+        feats.append([p["ref"].split("@")[0], p.get("name", p["ref"]), "セット内" if in_set else "候補",
+                      _num(p.get("add_to_baseline")), _num((p.get("add_ci") or {}).get("low")),
+                      _num((p.get("add_ci") or {}).get("high")), _num(p.get("add_to_set")),
+                      _num(set_ci.get("low")), _num(set_ci.get("high")), _num(p.get("drop_from_full")),
+                      _num(p.get("coverage"))])
     hist = [[h["generated_at"], h.get("n_features"), _num(h.get("score")), _num(h.get("baseline_score")),
              "最終確認" if h.get("final_check") else "通常", h.get("note", "")] for h in history]
     return {
         "eval_score.csv": (["metric", "value"], score),
-        "eval_features.csv": (["feature_id", "name", "add_to_baseline", "add_low", "add_high",
-                               "drop_from_full", "coverage"], feats),
+        "eval_features.csv": (["feature_id", "name", "role", "add_to_baseline", "add_low", "add_high",
+                               "add_to_set", "set_low", "set_high", "drop_from_full", "coverage"], feats),
         "eval_history.csv": (["at", "n_features", "score", "baseline_score", "kind", "note"], hist),
     }
 
@@ -112,8 +119,10 @@ def main() -> int:
     ev_path = src.parent / "eval_summary.json"
     if ev_path.exists():
         hp = src.parent / "eval_history.jsonl"
-        history = [json.loads(x) for x in hp.read_text(encoding="utf-8").splitlines() if x.strip()] if hp.exists() else []
-        tables.update(build_eval(json.loads(ev_path.read_text(encoding="utf-8")), history))
+        ev = json.loads(ev_path.read_text(encoding="utf-8"))
+        history = ([json.loads(x) for x in hp.read_text(encoding="utf-8").splitlines() if x.strip()] if hp.exists()
+                   else [{**ev, "n_features": len(ev.get("features_used", []))}])
+        tables.update(build_eval(ev, history))
     for name, (header, rows) in tables.items():
         _write(out / name, header, rows)
         print(f"{out / name}（{len(rows)}行）")

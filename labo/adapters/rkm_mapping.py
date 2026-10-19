@@ -55,7 +55,9 @@ def ekiden_race_class(competition_raw: Optional[str]) -> Optional[str]:
     if "伊那" in s:
         return "ina"
     if "高校駅伝" in s or "高等学校駅伝" in s:
-        return "national_hs" if "全国" in s else "regional_hs"
+        # 「全国高校駅伝○○予選会」「全国選抜招待…」は全国大会本番ではない（第5回実データの大会名で確認）
+        national = ("全国高校駅伝" in s or "全国高等学校駅伝" in s) and "予選" not in s and "招待" not in s
+        return "national_hs" if national else "regional_hs"
     return None
 
 

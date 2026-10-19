@@ -17,7 +17,7 @@
 - コード版が変わると、未完了の実行は再開を拒否する（混在防止）。新しい条件で実行し直す。
 
 ## 決定済み（docs/decisions.md）
-既定締切は高2の8/31、チームで複数人利用、推奨構成（lab_reader / lab_writer）、成果は箱根の往路区間5位以内または復路区間2位以内（hakone_leg_top@2：学生連合も相当順位で含む）、追跡は高校入学年度+3年度から4大会、運用はチームPC＋VPN、利用者は最大2人。
+既定締切は高2の8/31、チームで複数人利用、推奨構成（lab_reader / lab_writer）、成果は箱根の往路区間5位以内または復路区間2位以内（hakone_leg_top@3：学生連合は区間順位の扱いから除く）、追跡は高校入学年度+3年度から4大会、運用はチームPC＋VPN、利用者は最大2人。
 
 ## 次の作業
 1. 利用者が docs/supabase_setup.sql を実行し、チームPCで `scripts/run_audit.py` を実行（docs/next_steps.md A）。
@@ -25,7 +25,7 @@
 2. 監査結果から件数・語彙・孤児行・共有record_id・season_bests定義を報告（参考値との差分）。
 3. 監査結果で対応表を確定し、`labo/adapters/` に rkm → Result 変換を実装。数名を手計算で突合。
 4. 研究用保存先は docs/migration_proposal.sql を lab_writer で適用（前後で rkm 不変を確認）。
-5. 箱根の結果が rkm に含まれるか（athletes.entry_years / run_years、records の箱根区間）を監査し、成果ラベル用の取り込みを設計。学生連合の相当順位の出典を確認。
+5. 箱根の結果が rkm に含まれるか（athletes.entry_years / run_years、records の箱根区間）を監査し、成果ラベル用の取り込みを設計。学生連合は除外（決定済み）。
 
 ## 実行方法
 `python3 -m unittest discover -s tests -t .` / `python3 -m labo.server`。特徴量定義書は `python3 scripts/gen_feature_doc.py` で再生成。

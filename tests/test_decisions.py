@@ -86,20 +86,20 @@ class HakoneOutcome(unittest.TestCase):
         self.assertEqual((r.label, r.outbound_top, r.return_top), (POSITIVE, False, True))
         self.assertEqual(self.lab([leg("A", 2023, 8, 3)]).label, NEGATIVE_CONFIRMED)
 
-    def test_student_alliance_counted_by_equivalent_rank(self):
-        self.assertEqual(OD.ref, "hakone_leg_top@2")
-        r = self.lab([leg("A", 2022, 1, None, reference_only=True, reference_rank=4)])
-        self.assertEqual((r.label, r.outbound_top), (POSITIVE, True))
-        r = self.lab([leg("A", 2022, 7, None, reference_only=True, reference_rank=3)])
-        self.assertEqual((r.label, r.reason), (NEGATIVE_CONFIRMED, "参考記録のみあり"))
-        # 相当順位が未確認なら未達成と確定しない
-        self.assertEqual(self.lab([leg("A", 2022, 1, None, reference_only=True)]).label, UNKNOWN)
-        # v1（参考記録を含めない）も再現できる
-        v1 = OutcomeDefinition(version=1, include_reference=False)
-        r1 = label_person("A", 2018, [leg("A", 2022, 1, None, reference_only=True, reference_rank=4)],
-                          definition=v1, as_of=D(2026, 10, 18),
+    def test_student_alliance_excluded_v3(self):
+        self.assertEqual(OD.ref, "hakone_leg_top@3")
+        # 学生連合の区間は相当順位が良くても達成に数えない。それしかなければ「不明」
+        r = self.lab([leg("A", 2022, 1, None, reference_only=True, reference_rank=1)])
+        self.assertEqual(r.label, UNKNOWN)
+        # 別の年に自チームで達成していれば達成
+        r = self.lab([leg("A", 2022, 1, None, reference_only=True, reference_rank=1), leg("A", 2023, 2, 4)])
+        self.assertEqual(r.label, POSITIVE)
+        # 過去の版も再現できる：v2（相当順位で含める）
+        v2 = OutcomeDefinition(version=2, include_reference=True)
+        r2 = label_person("A", 2018, [leg("A", 2022, 1, None, reference_only=True, reference_rank=4)],
+                          definition=v2, as_of=D(2026, 10, 18),
                           complete_editions=set(range(2015, 2026)), linkage_checked=True)
-        self.assertEqual(r1.label, NEGATIVE_CONFIRMED)
+        self.assertEqual(r2.label, POSITIVE)
 
     def test_unconfirmed_identity_not_counted(self):
         self.assertEqual(self.lab([leg("A", 2022, 1, 1, identity=IDENTITY_UNCONFIRMED)]).label, UNKNOWN)
@@ -148,3 +148,45 @@ class RkmMapping(unittest.TestCase):
                           res("A", D(2021, 7, 1), 930)]))
         self.assertEqual(v["runs_5000_count"].value, 1)
         self.assertEqual(v["best_5000_s"].value, 930)
+
+
+class RkmDecisions20261019(unittest.TestCase):
+    def test_date_is_race_day(self):
+        from labo.adapters.rkm_mapping import parse_date
+        self.assertEqual(parse_date("2021-07-30"), D(2021, 7, 30))
+        self.assertEqual(parse_date("2021/7/3"), D(2021, 7, 3))
+        self.assertIsNone(parse_date("2021-02-30"))
+        self.assertIsNone(parse_date("7月30日"))
+
+    def test_grade_parsing(self):
+        from labo.adapters.rkm_mapping import parse_grade
+        for raw, g in (("2", 2), ("2+", 2), ("高2", 2), ("高校3年", 3), ("２", 2), ("1年生", 1)):
+            self.assertEqual(parse_grade(raw), g, raw)
+        for raw in ("4", "中3", "M1", "", None, "大2"):
+            self.assertIsNone(parse_grade(raw), raw)
+
+    def test_entry_year_from_grades(self):
+        from labo.adapters.rkm_mapping import infer_hs_entry_fy
+        rows = [(D(2020, 6, 1), "1", "洛北高"), (D(2021, 9, 1), "2+", "洛北高"), (D(2022, 2, 1), "2", "洛北高"),
+                (D(2023, 6, 1), "1", "東西大")]  # 大学のレースは使わない
+        self.assertEqual(infer_hs_entry_fy(rows), (2020, "derived_from_grade", 3))
+        conflict = rows + [(D(2021, 6, 1), "3", "洛北高")]
+        self.assertEqual(infer_hs_entry_fy(conflict)[:2], (None, "conflicting_grades"))
+        self.assertEqual(infer_hs_entry_fy([(D(2020, 6, 1), "2", None)])[:2], (None, "no_high_school_grade"))
+
+    def test_cross_profile_duplicates_merged(self):
+        from labo.adapters.rkm_mapping import build_duplicate_links
+        a = res("A", D(2021, 6, 1), 930, rid="X1", profile="P1")
+        b = res("A", D(2021, 6, 1), 930, rid="Y9", profile="P2")      # 別プロフィールの同じレース
+        c = res("A", D(2021, 6, 1), 930, rid="X2", profile="P1")      # 同プロフィール内は統合しない
+        other = res("B", D(2021, 6, 1), 930, rid="X1", profile="P1")  # 別人は統合しない
+        links = build_duplicate_links([a, b, c, other])
+        self.assertEqual([(l.canonical, l.duplicate) for l in links], [(a.key, b.key)])
+        v = values(ds_of([a, b, res("A", D(2021, 7, 1), 920), res("A", D(2021, 8, 1), 910)], links=links))
+        self.assertEqual(v["runs_5000_count"].value, 3)
+
+    def test_student_alliance_detection(self):
+        from labo.adapters.rkm_mapping import is_student_alliance
+        self.assertTrue(is_student_alliance("関東学生連合"))
+        self.assertFalse(is_student_alliance("青山学院大"))
+        self.assertFalse(is_student_alliance(None))

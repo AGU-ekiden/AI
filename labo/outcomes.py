@@ -3,7 +3,8 @@
 利用者決定（2026-10-18）：箱根駅伝で「往路（1〜5区）区間5位以内」または
 「復路（6〜10区）区間2位以内」を1回以上。二つの構成要素は別々にも保持し、独自の合成点は作らない。
 利用者決定（2026-10-19）：追跡期間は既定どおり。学生連合（オープン参加）も含める → v2。
-学生連合の走者には公式区間順位がないため、公式順位表に当てはめた「相当順位」を使う。
+利用者決定（2026-10-19・後）：分かりにくいため、区間順位の扱いから学生連合を除く → v3。
+  学生連合としての区間記録は達成に数えず、それしかない人は「不明」（未達成と確定しない）。
 
 実在選手への予測は行わない。このモジュールは過去世代のラベル付け（集計レベルの検証用）のみ。
 """
@@ -28,7 +29,7 @@ LABEL_TEXT = {
 @dataclass(frozen=True)
 class OutcomeDefinition:
     outcome_id: str = "hakone_leg_top"
-    version: int = 2
+    version: int = 3
     outbound_legs: tuple[int, ...] = (1, 2, 3, 4, 5)
     outbound_max_rank: int = 5
     return_legs: tuple[int, ...] = (6, 7, 8, 9, 10)
@@ -36,11 +37,13 @@ class OutcomeDefinition:
     # 追跡期間：高校入学年度E → 大学1年相当の年度 E+3 から max_editions 大会分（既定4回）
     first_edition_offset_fy: int = 3
     max_editions: int = 4
-    # 学生連合など参考記録の走者を含めるか（v1=含めない、v2=相当順位で含める）
-    include_reference: bool = True
+    # 学生連合など参考記録の走者を含めるか（v1・v3=含めない、v2=相当順位で含める）
+    include_reference: bool = False
+    # 含めない場合、参考記録しかない人を「不明」にするか（v3=する、v1=しない＝未達成扱い）
+    reference_makes_unknown: bool = True
     decided_by: str = "利用者（2026-10-18・10-19 チャットで決定）"
-    note: str = ("学生連合など参考記録の走者は、公式区間順位表に当てはめた相当順位で判定（v2）。"
-                 "相当順位が未確認なら未達成とは確定しない。"
+    note: str = ("区間順位は公式順位のみ。学生連合（参考記録）の区間は扱いから除き、"
+                 "それしかない人は不明とする（v3）。"
                  "浪人・休学等で在学時期がずれる人は追跡期間外になりうる（要確認事項）。"
                  "学校の出場資格・選手起用・進学先の影響を受けるため、未達成は能力不足を意味しない。")
 
@@ -133,6 +136,9 @@ def label_person(
             return OutcomeLabel(person_id, ref, UNKNOWN, None, None, no_rank, editions,
                                 "学生連合等の区間記録の相当順位が未確認")
     missing = [fy for fy in editions if fy not in complete_editions]
+    if reference and not definition.include_reference and definition.reference_makes_unknown:
+        return OutcomeLabel(person_id, ref, UNKNOWN, None, None, reference, editions,
+                            "学生連合（参考記録）の区間のみ。区間順位の扱いから除外")
     if pending:
         return OutcomeLabel(person_id, ref, UNKNOWN, None, None, pending, editions, "本人未確認の区間記録がある")
     if missing:

@@ -4,13 +4,21 @@ test_window_edges_at_august31 (tests.test_decisions.August31Cutoff.test_window_e
 test_editions (tests.test_decisions.HakoneOutcome.test_editions) ... ok
 test_future_race_not_visible_before_it_happens (tests.test_decisions.HakoneOutcome.test_future_race_not_visible_before_it_happens) ... ok
 test_outside_window_ignored (tests.test_decisions.HakoneOutcome.test_outside_window_ignored) ... ok
-test_student_alliance_counted_by_equivalent_rank (tests.test_decisions.HakoneOutcome.test_student_alliance_counted_by_equivalent_rank) ... ok
+test_student_alliance_excluded_v3 (tests.test_decisions.HakoneOutcome.test_student_alliance_excluded_v3) ... ok
 test_thresholds (tests.test_decisions.HakoneOutcome.test_thresholds) ... ok
 test_unconfirmed_identity_not_counted (tests.test_decisions.HakoneOutcome.test_unconfirmed_identity_not_counted) ... ok
 test_untracked_generation_is_not_zero (tests.test_decisions.HakoneOutcome.test_untracked_generation_is_not_zero) ... ok
 test_dates (tests.test_decisions.July31CutoffOption.test_dates) ... ok
 test_interhigh_spanning_cutoff_is_held (tests.test_decisions.July31CutoffOption.test_interhigh_spanning_cutoff_is_held) ... ok
 test_window_edges_at_july31 (tests.test_decisions.July31CutoffOption.test_window_edges_at_july31) ... ok
+test_cross_profile_duplicates_merged (tests.test_decisions.RkmDecisions20261019.test_cross_profile_duplicates_merged) ... ok
+test_date_is_race_day (tests.test_decisions.RkmDecisions20261019.test_date_is_race_day) ... ok
+test_entry_year_from_grades (tests.test_decisions.RkmDecisions20261019.test_entry_year_from_grades) ... ok
+test_grade_parsing (tests.test_decisions.RkmDecisions20261019.test_grade_parsing) ... ok
+test_student_alliance_detection (tests.test_decisions.RkmDecisions20261019.test_student_alliance_detection) ... ok
+test_event_map_uses_name_not_distance (tests.test_decisions.RkmMapping.test_event_map_uses_name_not_distance) ... ok
+test_no_mark_rows_are_excluded_not_zero (tests.test_decisions.RkmMapping.test_no_mark_rows_are_excluded_not_zero) ... ok
+test_status_map (tests.test_decisions.RkmMapping.test_status_map) ... ok
 test_dns_dnf_blank_failed_zero_are_distinct (tests.test_features.EventsAndRecords.test_dns_dnf_blank_failed_zero_are_distinct) ... ok
 test_duplicate_listing_does_not_inflate (tests.test_features.EventsAndRecords.test_duplicate_listing_does_not_inflate) ... ok
 test_ekiden_self_leg_vs_pass_time (tests.test_features.EventsAndRecords.test_ekiden_self_leg_vs_pass_time) ... ok
@@ -51,5 +59,5 @@ test_outputs_have_no_prediction_or_ranking (tests.test_store_server.StoreTests.t
 test_rerun_and_resume_do_not_duplicate (tests.test_store_server.StoreTests.test_rerun_and_resume_do_not_duplicate) ... ok
 test_synthetic_is_deterministic_and_labelled (tests.test_store_server.StoreTests.test_synthetic_is_deterministic_and_labelled) ... ok
 test_unapproved_definition_is_not_executed (tests.test_store_server.StoreTests.test_unapproved_definition_is_not_executed) ... ok
-Ran 53 tests in 1.772s
+Ran 61 tests in 1.621s
 OK

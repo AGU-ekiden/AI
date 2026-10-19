@@ -45,12 +45,15 @@ def map_event(event: Optional[str], event_group: Optional[str]) -> Optional[str]
 
 def ekiden_race_class(competition_raw: Optional[str]) -> Optional[str]:
     """高校・都道府県駅伝の大会区分（大会名による暫定判定。第4回監査の大会名一覧で確認する）。
-    national_hs＝全国高校駅伝、todofuken＝全国都道府県対抗男子駅伝、regional_hs＝都道府県・地区の高校駅伝。"""
+    national_hs＝全国高校駅伝、todofuken＝全国都道府県対抗男子駅伝、ina＝春の高校伊那駅伝（3月・全国から多数参加）、
+    regional_hs＝都道府県・地区の高校駅伝。"""
     s = competition_raw or ""
     if "駅伝" not in s or "箱根" in s or "女子" in s:
         return None
     if "都道府県" in s:
         return "todofuken"
+    if "伊那" in s:
+        return "ina"
     if "高校駅伝" in s or "高等学校駅伝" in s:
         return "national_hs" if "全国" in s else "regional_hs"
     return None

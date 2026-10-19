@@ -26,7 +26,7 @@ from .rkm_mapping import (
 from .rkm_readonly import SAFETY_QUERIES, UnsafeConnection, assert_readonly_sql
 
 REAL_DATA_LABEL = "実データ（rkm・読み取り専用。非公開）"
-_HS_EKIDEN = ("r.event_group = 'ekiden' AND (r.competition_raw LIKE '%高校駅伝%' OR r.competition_raw LIKE '%高等学校駅伝%' OR r.competition_raw LIKE '%都道府県%駅伝%') AND r.competition_raw NOT LIKE '%女子%'")
+_HS_EKIDEN = ("r.event_group = 'ekiden' AND (r.competition_raw LIKE '%高校駅伝%' OR r.competition_raw LIKE '%高等学校駅伝%' OR r.competition_raw LIKE '%都道府県%駅伝%' OR r.competition_raw LIKE '%伊那%駅伝%') AND r.competition_raw NOT LIKE '%女子%'")
 
 # 全国大会（母集団 national_by_cutoff 用）。研究上の選択であり暫定（大会名の部分一致）
 NATIONAL_PATTERNS = ("全国高校総合体育大会", "全国高等学校総合体育大会", "インターハイ",

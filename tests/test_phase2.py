@@ -33,6 +33,8 @@ def rows2():
         ("P1", "pa", "e5", "2020-11-01", "第73回架空県高校駅伝", 2, 600.0, None, None),
         ("P1", "pa", "e6", "2020-12-20", "全国高校駅伝（女子）", 1, 1200.0, 1, None),
         ("P1", "pa", "e7", "2020-10-01", "架空地区高校駅伝", 4, None, None, "DNS"),
+        ("P1", "pa", "e8", "2021-03-21", "春の高校伊那駅伝2021", 1, 1900.0, 7, None),
+        ("P1", "pa", "e9", "2022-03-20", "春の高校伊那駅伝2022", 1, 1880.0, 2, None),   # 締切後（高2の3月）
     ]
     r["hs_ekiden_self_legs"] = [("P1", "pa", "e2", 4, 12, 1000.0)]
     return r
@@ -63,6 +65,7 @@ class Phase2Tests(unittest.TestCase):
         self.assertEqual(self.v["todofuken_hs_best_rank"].value, 12.0)     # ekiden_legs の本人区間で補完
         self.assertEqual(self.v["todofuken_junior_best_rank"].value, 3.0)
         self.assertEqual(self.v["regional_hs_ekiden_best_rank"].reason, "no_ranked_leg")
+        self.assertEqual(self.v["ina_ekiden_best_rank"].value, 7.0)
         self.assertEqual(self.rep.ekiden.get("重複としてまとめた"), 1)
         self.assertEqual(self.rep.ekiden.get("記録なし・棄権など"), 1)
 
@@ -71,6 +74,8 @@ class Phase2Tests(unittest.TestCase):
         self.assertEqual(ekiden_race_class(TDF), "todofuken")
         self.assertEqual(ekiden_race_class("第73回架空県高校駅伝"), "regional_hs")
         self.assertIsNone(ekiden_race_class("全国高校駅伝（女子）"))
+        self.assertEqual(ekiden_race_class("春の高校伊那駅伝2023"), "ina")
+        self.assertIsNone(ekiden_race_class("春の高校伊那駅伝（女子）"))
         self.assertIsNone(ekiden_race_class("第100回東京箱根間往復大学駅伝競走"))
 
     def test_spec_validation(self):

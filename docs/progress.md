@@ -29,5 +29,5 @@
 | Web画面の実データ表示 | 実装済み（LABO_DATA_SOURCE=rkm） | 模擬DBで起動・表示を確認 |
 | 研究用DBスキーマ | 方針は承認済み・**未実行** | docs/migration_proposal.sql（lab_writer で実行する案） |
 | 既存rkmの不変確認（前後ハッシュ） | 「前」を記録済み（records_hash 356d362b…） | docs/audit_baseline.md。研究用保存先の作成後に「後」を確認 |
-| 第2弾の特徴量（中学3000m/1500m・高校3000m/1500m・駅伝の区間順位 10件） | 実装済み（テスト・模擬DBで確認）・状態「テスト済み」＝**利用者が「計算可能」にすると実データで計算** | labo/catalog.py phase2_definitions、tests/test_phase2.py |
+| 第2弾の特徴量（中学3000m/1500m・高校3000m/1500m・駅伝の区間順位 11件） | 実装済み（テスト・模擬DBで確認）・状態「テスト済み」＝**利用者が「計算可能」にすると実データで計算** | labo/catalog.py phase2_definitions、tests/test_phase2.py |
 | ペース比・splits・3000mSC | 未実装・保留 | 種目・日時・本人・単位の検証後 |

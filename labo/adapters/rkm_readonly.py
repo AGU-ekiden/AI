@@ -184,6 +184,18 @@ AUDIT_QUERIES: dict[str, str] = {
         "count(DISTINCT h.person_id) FROM rkm.athletes a LEFT JOIN (SELECT DISTINCT person_id FROM rkm.records "
         "WHERE event_group = 'ekiden' AND competition_raw LIKE '%箱根%' AND competition_raw NOT LIKE '%予選%') h "
         "USING (person_id) GROUP BY 1"),
+    # run_years の年が暦年（1月の大会の年）か年度かの確認：箱根本戦の記録の年度との差の分布
+    "run_years_alignment": (
+        "SELECT h.fiscal_year - y.v::int, count(*) FROM rkm.athletes a "
+        "CROSS JOIN LATERAL jsonb_array_elements_text(a.run_years::jsonb) AS y(v) "
+        "JOIN (SELECT DISTINCT person_id, fiscal_year FROM rkm.records WHERE event_group = 'ekiden' "
+        "AND competition_raw LIKE '%箱根%' AND competition_raw NOT LIKE '%予選%') h "
+        "ON h.person_id = a.person_id AND abs(h.fiscal_year - y.v::int) <= 1 GROUP BY 1 ORDER BY 1"),
+    "run_years_unmatched": (
+        "SELECT count(*), count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM rkm.records r "
+        "WHERE r.person_id = a.person_id AND r.event_group = 'ekiden' AND r.competition_raw LIKE '%箱根%' "
+        "AND r.competition_raw NOT LIKE '%予選%' AND r.fiscal_year IN (y.v::int - 1, y.v::int))) "
+        "FROM rkm.athletes a CROSS JOIN LATERAL jsonb_array_elements_text(a.run_years::jsonb) AS y(v)"),
     "ekiden_self": (
         "SELECT is_self, count(*), count(leg_rank), count(leg_value), count(pass_value) "
         "FROM rkm.ekiden_legs GROUP BY 1 ORDER BY 1"),

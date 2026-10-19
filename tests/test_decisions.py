@@ -249,3 +249,39 @@ class RkmRound2Findings(unittest.TestCase):
         self.assertTrue(is_student_alliance(None, "OP"))
         self.assertTrue(is_student_alliance(None, " op "))
         self.assertFalse(is_student_alliance(None, "3"))
+
+
+class HakoneYears(unittest.TestCase):
+    def test_parse_years(self):
+        from labo.adapters.rkm_mapping import parse_years
+        self.assertEqual(parse_years('["2022","2021"]'), [2021, 2022])
+        self.assertEqual(parse_years("[]"), [])
+        self.assertIsNone(parse_years(None))
+        self.assertIsNone(parse_years("abc"))
+
+    def test_complete_editions_per_person(self):
+        from labo.adapters.rkm_mapping import person_complete_editions
+        window = [2021, 2022, 2023, 2024]
+        # 2023年1月・2024年1月に出走（暦年）→ 年度2022・2023。2022年度だけ区間順位の記録あり
+        got = person_complete_editions(window, [2023, 2024], ranked_record_fys={2022})
+        self.assertEqual(got, {2021, 2022, 2024})
+        self.assertEqual(person_complete_editions(window, [], set()), set(window))  # 一度も走っていない
+        self.assertEqual(person_complete_editions(window, None, set()), set())       # 情報なし
+
+    def test_label_with_notion_run_years(self):
+        from labo.adapters.rkm_mapping import person_complete_editions
+        window = OD.edition_fys(2018)
+        never_ran = label_person("A", 2018, [], definition=OD, as_of=D(2026, 10, 18),
+                                 complete_editions=person_complete_editions(window, [], set()),
+                                 linkage_checked=True)
+        self.assertEqual(never_ran.label, NEGATIVE_CONFIRMED)
+        # 出走年はあるのに区間順位の記録が無い → 不明（未達成と確定しない）
+        missing = label_person("A", 2018, [], definition=OD, as_of=D(2026, 10, 18),
+                               complete_editions=person_complete_editions(window, [2023], set()),
+                               linkage_checked=True)
+        self.assertEqual(missing.label, UNKNOWN)
+
+    def test_linkage_checked(self):
+        from labo.adapters.rkm_mapping import linkage_checked
+        self.assertTrue(linkage_checked('["2021"]', "[]"))
+        self.assertFalse(linkage_checked(None, None))  # 追加収集の112人など

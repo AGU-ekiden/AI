@@ -181,3 +181,47 @@ def is_student_alliance(affiliation_raw: Optional[str], place_raw: Optional[str]
     if affiliation_raw and "連合" in affiliation_raw:
         return True
     return bool(place_raw) and place_raw.strip().upper() == "OP"
+
+
+# ---- 箱根のエントリー年・出走年（利用者確認 2026-10-19：athletes.entry_years / run_years は箱根駅伝） ----
+def parse_years(raw: Optional[str]) -> Optional[list[int]]:
+    """'["2021","2022"]' → [2021, 2022]。NULL は None（情報なし）、'[]' は空リスト（該当なし）。"""
+    import json
+    if raw is None:
+        return None
+    try:
+        vals = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(vals, list):
+        return None
+    out = []
+    for v in vals:
+        try:
+            out.append(int(str(v)))
+        except ValueError:
+            return None
+    return sorted(set(out))
+
+
+def hakone_year_to_edition_fy(year: int, calendar_year: bool = True) -> int:
+    """出走年 → 大会の年度。箱根は1月開催のため、出走年が暦年（例 2022 = 2022年1月）なら年度は前年。
+    暦年か年度かは第3回監査（run_years_alignment）で確認する。既定は暦年。"""
+    return year - 1 if calendar_year else year
+
+
+def person_complete_editions(edition_fys: list[int], run_years: Optional[list[int]],
+                             ranked_record_fys: set[int], calendar_year: bool = True) -> set[int]:
+    """その人について「結果がそろっている」大会年度の集合（outcomes.label_person の complete_editions に渡す）。
+    - Notion の出走年に無い年度：走っていないことが分かっているので、そろっている扱い
+    - 出走年にある年度：区間順位（または学生連合 OP）の記録が DB にある場合だけ、そろっている扱い
+    run_years が無い（NULL）人は何も分からないので空集合。"""
+    if run_years is None:
+        return set()
+    ran = {hakone_year_to_edition_fy(y, calendar_year) for y in run_years}
+    return {fy for fy in edition_fys if fy not in ran or fy in ranked_record_fys}
+
+
+def linkage_checked(entry_years_raw: Optional[str], run_years_raw: Optional[str]) -> bool:
+    """利用者の Notion 選手一覧で箱根のエントリー・出走が整理されている人（値が NULL でない）を照合済みとみなす。"""
+    return parse_years(entry_years_raw) is not None and parse_years(run_years_raw) is not None

@@ -144,6 +144,20 @@ AUDIT_QUERIES: dict[str, str] = {
         "SELECT regexp_replace(competition_raw, '[0-9]', '9', 'g'), event_group, count(*), "
         "count(ekiden_leg), count(ekiden_leg_rank), min(fiscal_year), max(fiscal_year) FROM rkm.records "
         "WHERE competition_raw LIKE '%箱根%' GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 30"),
+    # 複数日大会の日付：同じ大会・種目でラウンドごとに日付が違うか（大会名・日付は公開情報。氏名なし）
+    "multiday_5000_dates": (
+        "SELECT competition_raw, round_raw, date, count(*) FROM rkm.records "
+        "WHERE event = '5000m' AND competition_id IN (SELECT competition_id FROM rkm.records "
+        "WHERE event = '5000m' AND competition_id IS NOT NULL GROUP BY 1 HAVING count(DISTINCT date) > 1) "
+        "GROUP BY 1, 2, 3 ORDER BY 1, 3 LIMIT 120"),
+    "interhigh_5000_dates": (
+        "SELECT competition_raw, round_raw, date, count(*) FROM rkm.records WHERE event = '5000m' "
+        "AND (competition_raw LIKE '%総体%' OR competition_raw LIKE '%インターハイ%' "
+        "OR competition_raw LIKE '%高等学校総合体育大会%') GROUP BY 1, 2, 3 ORDER BY 3 DESC LIMIT 80"),
+    # 箱根の学生連合（所属名に「連合」）と区間順位の有無
+    "hakone_alliance": (
+        "SELECT (affiliation_raw LIKE '%連合%'), count(*), count(ekiden_leg), count(ekiden_leg_rank) "
+        "FROM rkm.records WHERE competition_raw LIKE '%箱根%' GROUP BY 1"),
     "ekiden_self": (
         "SELECT is_self, count(*), count(leg_rank), count(leg_value), count(pass_value) "
         "FROM rkm.ekiden_legs GROUP BY 1 ORDER BY 1"),

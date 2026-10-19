@@ -27,6 +27,7 @@ PLAUSIBLE_RANGE_S = {
 HOLD_REASONS = {
     "date_spans_cutoff", "implausible_value", "identity_unconfirmed",
     "row_unverified", "performed_date_unknown", "date_unknown", "format_unknown",
+    "status_unconfirmed",
 }
 
 REASON_LABELS = {
@@ -40,6 +41,8 @@ REASON_LABELS = {
     "fetch_failed": "取得失敗",
     "format_unknown": "形式不明",
     "out_of_scope": "対象外",
+    "no_mark": "記録なし（NM・NI・DNE）",
+    "status_unconfirmed": "意味が未確認の状態（例：競走中止）",
     "nonpositive_time": "正の数値タイムでない",
     "implausible_value": "数値が妥当範囲外（単位異常の疑い）",
     "row_unverified": "行単位の確認が未了（原本の存在だけでは採用しない）",

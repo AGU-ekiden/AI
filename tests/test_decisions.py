@@ -121,3 +121,30 @@ class HakoneOutcome(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RkmMapping(unittest.TestCase):
+    def test_status_map(self):
+        from labo.adapters.rkm_mapping import map_status
+        from labo.model import STATUS_DSQ, STATUS_NO_MARK, STATUS_OK, STATUS_UNCONFIRMED
+        for raw in ("NM", "NI", "DNE"):
+            self.assertEqual(map_status(raw), STATUS_NO_MARK)
+        self.assertEqual(map_status(None), STATUS_OK)
+        self.assertEqual(map_status("DQ"), STATUS_DSQ)
+        self.assertEqual(map_status("競走中止"), STATUS_UNCONFIRMED)  # 推測で DNF にしない
+
+    def test_event_map_uses_name_not_distance(self):
+        from labo.adapters.rkm_mapping import map_event
+        self.assertEqual(map_event("5000m", "track"), "5000m")
+        self.assertIsNone(map_event("5km", "road"))
+        self.assertIsNone(map_event("5000mW", "walk"))
+        self.assertEqual(map_event("3000mSC(91.4cm)", "track"), "3000mSC")
+        self.assertIsNone(map_event("3000mSC(76.2cm)", "track"))
+        self.assertIsNone(map_event("駅伝", "ekiden"))
+
+    def test_no_mark_rows_are_excluded_not_zero(self):
+        from labo.model import STATUS_NO_MARK
+        v = values(ds_of([res("A", D(2021, 6, 1), None, status=STATUS_NO_MARK),
+                          res("A", D(2021, 7, 1), 930)]))
+        self.assertEqual(v["runs_5000_count"].value, 1)
+        self.assertEqual(v["best_5000_s"].value, 930)

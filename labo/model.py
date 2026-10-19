@@ -19,9 +19,12 @@ STATUS_NOT_FETCHED = "not_fetched"  # 未取得
 STATUS_FETCH_FAILED = "fetch_failed"  # 取得失敗
 STATUS_FORMAT_UNKNOWN = "format_unknown"  # 表記を解釈できない
 STATUS_OUT_OF_SCOPE = "out_of_scope"  # 対象外
+STATUS_NO_MARK = "no_mark"         # 記録なし（rkm の NM・NI・DNE。利用者決定 2026-10-19）
+STATUS_UNCONFIRMED = "status_unconfirmed"  # 意味が未確認の状態（例：「競走中止」）
 RESULT_STATUSES = {
     STATUS_OK, STATUS_DNS, STATUS_DNF, STATUS_DSQ, STATUS_BLANK,
     STATUS_NOT_FETCHED, STATUS_FETCH_FAILED, STATUS_FORMAT_UNKNOWN, STATUS_OUT_OF_SCOPE,
+    STATUS_NO_MARK, STATUS_UNCONFIRMED,
 }
 
 # 本人照合

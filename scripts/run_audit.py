@@ -47,7 +47,8 @@ def main() -> int:
     print("件数:", counts)
     print("失敗したクエリ:", list(report["errors"]) or "なし")
     rls = report["results"].get("rls_status", [])
-    hidden = [r[0] for r in rls if r[1] and counts.get(r[0], 0) == 0]
+    # 件数を数えた表のうち、RLS有効・ポリシー0件・0件の表だけを警告する（数えていない表は対象外）
+    hidden = [r[0] for r in rls if r[1] and r[4] == 0 and r[0] in counts and counts[r[0]] == 0]
     if hidden:
         print("注意: 次の表は RLS（行レベルセキュリティ）が有効で、lab_reader 用のポリシーがないため"
               "0件に見えている可能性があります:", ", ".join(hidden))

@@ -186,10 +186,11 @@ class RkmDecisions20261019(unittest.TestCase):
         from labo.adapters.rkm_mapping import build_duplicate_links
         a = res("A", D(2021, 6, 1), 930, rid="X1", profile="P1")
         b = res("A", D(2021, 6, 1), 930, rid="Y9", profile="P2")      # 別プロフィールの同じレース
-        c = res("A", D(2021, 6, 1), 930, rid="X2", profile="P1")      # 同プロフィール内は統合しない
+        c = res("A", D(2021, 6, 1), 930, rid="X2", profile="P1")      # 同プロフィール・別大会ID・同記録も統合（2026-10-19 決定）
         other = res("B", D(2021, 6, 1), 930, rid="X1", profile="P1")  # 別人は統合しない
         links = build_duplicate_links([a, b, c, other])
-        self.assertEqual([(l.canonical, l.duplicate) for l in links], [(a.key, b.key)])
+        self.assertEqual({(l.canonical, l.duplicate) for l in links}, {(a.key, b.key), (a.key, c.key)})
+        self.assertEqual(build_duplicate_links([a, c], merge_same_profile=False), [])
         v = values(ds_of([a, b, res("A", D(2021, 7, 1), 920), res("A", D(2021, 8, 1), 910)], links=links))
         self.assertEqual(v["runs_5000_count"].value, 3)
 

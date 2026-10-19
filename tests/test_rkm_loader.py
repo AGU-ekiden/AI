@@ -126,3 +126,43 @@ class RoundOrderAndDiagnostics(unittest.TestCase):
         self.assertEqual(rep.entry_year.get("conflicting_grades"), 1)
         self.assertIsNone(ds.athletes["P1"].hs_entry_fiscal_year)
         self.assertEqual(rep.entry_conflicts["最多候補の割合"], {"60〜80%": 1})
+
+
+class CrossCompetitionAndSupplement(unittest.TestCase):
+    def test_same_mark_different_competition_merged(self):
+        from dataclasses import replace
+        from labo.adapters.rkm_mapping import build_duplicate_links
+        from tests.helpers import res
+        a = replace(res("A", D(2021, 6, 1), 930, comp="C1", rid="R1"), round_raw="決勝")
+        b = replace(res("A", D(2021, 6, 1), 930, comp="C9", rid="R2"), round_raw="ﾀｲﾑﾚｰｽ")   # 兼ね大会の二重登録
+        p = replace(res("A", D(2021, 6, 1), 930, comp="C9", rid="R3"), round_raw="予選")     # 予選は別レース
+        links = build_duplicate_links([a, b, p])
+        self.assertEqual([(l.canonical.record_id, l.duplicate.record_id) for l in links], [("R1", "R2")])
+        self.assertIn("大会IDは別", links[0].evidence)
+
+    def test_hakone_supplement(self):
+        r = rows()
+        r["hakone"] = []  # 2024年1月の記録が DB に無い状況
+        r["hakone_self_legs"] = []
+        r["supplement"] = [
+            {"person_id": "P1", "run_year": "2024", "leg": "3", "leg_rank": "4", "source_note": "公式記録"},
+            {"person_id": "P1", "run_year": "2023", "leg": "1", "leg_rank": "1"},        # 出走年に無い
+            {"person_id": "P1", "run_year": "2024", "leg": "11", "leg_rank": "1"},       # 範囲外
+            {"person_id": "PX", "run_year": "2024", "leg": "1", "leg_rank": "1"},        # 不明な人
+            {"person_id": "P1", "run_year": "2024", "leg": "", "leg_rank": ""},          # 未記入は無視
+        ]
+        _, hk, _ = build_dataset(r)
+        self.assertEqual(hk.supplement_used, 1)
+        lg = hk.legs[0]
+        self.assertEqual((lg.edition_fy, lg.leg, lg.official_rank), (2023, 3, 4))
+        self.assertTrue(lg.source_ref.startswith("supplement:"))
+        self.assertEqual(hk.supplement_rejected, {"Notion の出走年に無い年": 1, "区間・順位の範囲外": 1,
+                                                  "person_id が見つからない": 1})
+
+    def test_db_takes_precedence_over_supplement(self):
+        r = rows()
+        r["supplement"] = [{"person_id": "P1", "run_year": "2024", "leg": "9", "leg_rank": "1"}]
+        _, hk, _ = build_dataset(r)
+        self.assertEqual(hk.supplement_used, 0)
+        self.assertEqual(hk.supplement_rejected, {"DB に記録あり（DB を優先）": 1})
+        self.assertEqual([l.leg for l in hk.legs if l.person_id == "P1"], [3])

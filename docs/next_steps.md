@@ -27,6 +27,13 @@ python -m labo.server
 ```
 初回は data\.token のトークンでログイン。VPN 内のメンバーに見せる場合は LABO_HOST に VPN のアドレスを指定。
 
+## B2. 箱根の記録欠けを補う（任意）
+```powershell
+python scripts/make_hakone_supplement.py     # data\hakone_supplement.csv（氏名入り・共有しない）ができる
+```
+Excel で開き、各行の leg（区間 1〜10）と leg_rank（区間順位）を公式結果から記入。学生連合なら is_student_alliance に 1
+（leg_rank は空でよい）。source_note に出典。保存（CSV UTF-8）後に `python scripts/run_real_features.py` を実行すると取り込まれる。
+
 ## C. Claude 側（real_summary.json を受け取った後）
 1. 欠損理由・保留理由の内訳を確認し、想定外の多さがあれば原因を特定してルールを見直す。
 2. 研究用の保存先（lab スキーマ）の作成案を最終確認 → 適用 → rkm の件数・ハッシュが不変か確認。

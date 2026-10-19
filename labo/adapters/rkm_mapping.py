@@ -177,8 +177,9 @@ def same_race_rounds(a: Optional[str], b: Optional[str]) -> bool:
 
 # ---- 重複のまとめ ----
 # (1) 複数プロフィール（利用者決定 2026-10-19）：同一人物・同日・同種目・同記録表記は1つにまとめる
-# (2) 同じプロフィール内の二重表示（提案・確認待ち）：同じ大会・同日・同種目・同記録表記で、ラウンドが
-#     同じレースの別表示（例「ﾀｲﾑﾚｰｽ」と「ﾀｲﾑﾚｰｽ総合結果」）なら1つにまとめる。予選と決勝は別レース。
+# (2) 同じプロフィール内の二重表示（利用者決定 2026-10-19）：同日・同種目・同記録表記で、ラウンドが
+#     同じレースの別表示（例「ﾀｲﾑﾚｰｽ」と「ﾀｲﾑﾚｰｽ総合結果」）なら1つにまとめる。大会IDが別でもまとめる。
+#     予選と決勝は別レース。
 def build_duplicate_links(results, merge_same_profile: bool = True) -> list:
     """代表は profile_id/record_id の辞書順で最小（決定的）。"""
     from ..model import DuplicateLink
@@ -197,9 +198,12 @@ def build_duplicate_links(results, merge_same_profile: bool = True) -> list:
                 if k.key.profile_id != r.key.profile_id:
                     target, why = k, "同一人物・同日・同種目・同記録表記（複数プロフィール。利用者決定 2026-10-19）"
                     break
-                if (merge_same_profile and k.competition_id is not None
-                        and k.competition_id == r.competition_id and same_race_rounds(k.round_raw, r.round_raw)):
-                    target, why = k, "同じ大会・同日・同種目・同記録表記で同じレースの別表示（同一プロフィール）"
+                if merge_same_profile and same_race_rounds(k.round_raw, r.round_raw):
+                    # 利用者決定（2026-10-19）：大会IDが違っても同日・同種目・同記録表記なら同じレース
+                    # （「記録会兼○○選考会」のような二重登録）。予選と決勝のように別ラウンドなら別レース。
+                    same = k.competition_id == r.competition_id
+                    target, why = k, ("同じ大会・同日・同種目・同記録表記で同じレースの別表示（同一プロフィール）"
+                                      if same else "大会IDは別だが同日・同種目・同記録表記（二重登録。同一プロフィール）")
                     break
             if target is None:
                 kept.append(r)

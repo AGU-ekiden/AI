@@ -153,6 +153,7 @@ def main() -> int:
                  "duplicate_links": rep.duplicate_links, "date_maybe_first_day_rows": rep.date_maybe_first_day,
                  "excluded_rows": rep.excluded_rows, "entry_year_conflicts": rep.entry_conflicts,
                  "hakone_legs": len(hakone.legs),
+                 "hakone_supplement": {"used": hakone.supplement_used, "rejected": hakone.supplement_rejected},
                  "hakone_ambiguous_records": hakone.ambiguous_records},
         "cohort": {"included": n_in, "excluded": dict(excluded)},
         "decisions_5000m": {f"{k[0]}:{k[1]}": v for k, v in decisions.most_common()},

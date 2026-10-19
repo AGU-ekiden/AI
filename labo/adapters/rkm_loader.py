@@ -32,6 +32,7 @@ NATIONAL_PATTERNS = ("全国高校総合体育大会", "全国高等学校総合
 
 Q = {
     "athletes": "SELECT person_id, name, entry_years, run_years FROM rkm.athletes",
+    "athlete_universities": "SELECT person_id, university_raw FROM rkm.athletes",
     "profiles": "SELECT person_id, profile_id, identity_role FROM rkm.profiles",
     "comp_range": (
         "SELECT competition_id, min(date), max(date), count(DISTINCT date), max(competition_raw) "
@@ -65,6 +66,9 @@ class HakoneData:
     run_years: dict[str, Optional[list[int]]] = field(default_factory=dict)
     entry_years: dict[str, Optional[list[int]]] = field(default_factory=dict)
     ambiguous_records: int = 0
+    universities: dict[str, str] = field(default_factory=dict)
+    supplement_used: int = 0
+    supplement_rejected: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -134,6 +138,8 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
         hakone.run_years[pid] = parse_years(run_raw)
         hakone.entry_years[pid] = parse_years(entry_raw)
     mapped_profiles = {(pid, prof) for pid, prof, _role in rows["profiles"]}
+    for pid, univ in rows.get("athlete_universities", []):
+        hakone.universities[pid] = univ or ""
 
     results: list[Result] = []
     for (pid, prof, rid, d, cid, cname, event, group, rnd, mark_raw, mark_value, unit, timing,
@@ -201,11 +207,65 @@ def build_dataset(rows: dict[str, Iterable[tuple]]) -> tuple[Dataset, HakoneData
             leg=int(leg), official_rank=None if alliance else (int(leg_rank) if leg_rank is not None else None),
             reference_only=alliance, source_ref=f"rkm.records:{pid}/{prof}/{rid}"))
 
+    _apply_hakone_supplement(rows.get("supplement", []), athletes, hakone)
     ds = Dataset(athletes, results, links, national, False, REAL_DATA_LABEL)
     return ds, hakone, rep
 
 
-def load_from_db(dsn_env: str = "RKM_READONLY_DSN") -> tuple[Dataset, HakoneData, LoadReport]:  # pragma: no cover
+SUPPLEMENT_COLUMNS = ["person_id", "name", "university", "run_year", "leg", "leg_rank",
+                      "is_student_alliance", "source_note"]
+
+
+def _apply_hakone_supplement(rows: Iterable[dict], athletes: dict, hakone: HakoneData) -> None:
+    """補完ファイル（公式結果から利用者が記入）の箱根区間を追加する。rkm は変更しない。
+    DB に同じ人・同じ大会年度の記録があれば DB を優先し、補完は使わない。"""
+    def reject(why: str) -> None:
+        hakone.supplement_rejected[why] = hakone.supplement_rejected.get(why, 0) + 1
+    have = {(lg.person_id, lg.edition_fy) for lg in hakone.legs}
+    for row in rows:
+        pid = (row.get("person_id") or "").strip()
+        leg_s, rank_s = (row.get("leg") or "").strip(), (row.get("leg_rank") or "").strip()
+        alliance = (row.get("is_student_alliance") or "").strip() in ("1", "true", "True", "はい", "○")
+        if not leg_s and not rank_s:
+            continue  # 未記入の行
+        if pid not in athletes:
+            reject("person_id が見つからない"); continue
+        try:
+            year = int(row.get("run_year") or "")
+            leg = int(leg_s)
+            rank = int(rank_s) if rank_s else None
+        except ValueError:
+            reject("数値として読めない"); continue
+        if not 1 <= leg <= 10 or (rank is not None and rank < 1):
+            reject("区間・順位の範囲外"); continue
+        if rank is None and not alliance:
+            reject("区間順位が空（学生連合でもない）"); continue
+        if year not in (hakone.run_years.get(pid) or []):
+            reject("Notion の出走年に無い年"); continue
+        fy = year - 1  # 出走年は暦年（1月の大会）→ 年度は前年
+        if (pid, fy) in have:
+            reject("DB に記録あり（DB を優先）"); continue
+        have.add((pid, fy))
+        hakone.legs.append(HakoneLegResult(
+            person_id=pid, edition_fy=fy, race_date=date(year, 1, 2 if leg <= 5 else 3), leg=leg,
+            official_rank=None if alliance else rank, reference_only=alliance,
+            source_ref=f"supplement:{(row.get('source_note') or '').strip()[:100]}"))
+        hakone.supplement_used += 1
+
+
+def read_supplement_csv(path) -> list[dict]:
+    """補完ファイル（UTF-8 / Excel の UTF-8 BOM 付き どちらも可）を読む。無ければ空。"""
+    import csv
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return []
+    with open(p, encoding="utf-8-sig", newline="") as f:
+        return [r for r in csv.DictReader(f)]
+
+
+def load_from_db(dsn_env: str = "RKM_READONLY_DSN",
+                 supplement_path: Optional[str] = None) -> tuple[Dataset, HakoneData, LoadReport]:  # pragma: no cover
     dsn = os.environ.get(dsn_env)
     if not dsn:
         raise RuntimeError(f"環境変数 {dsn_env} が未設定です")
@@ -227,4 +287,6 @@ def load_from_db(dsn_env: str = "RKM_READONLY_DSN") -> tuple[Dataset, HakoneData
                 cur.execute(sql)
                 out[name] = cur.fetchall()
         conn.rollback()
+    path = supplement_path or os.environ.get("LABO_HAKONE_SUPPLEMENT", "data/hakone_supplement.csv")
+    out["supplement"] = read_supplement_csv(path)
     return build_dataset(out)

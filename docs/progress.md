@@ -24,5 +24,5 @@
 | rkm 読み取り専用監査 | 実装済み・本番で接続成功。lab_reader 用読み取りポリシーを全10表に追加済み（2026-10-19 利用者実行）・**監査実行済み（件数は参考値と完全一致：docs/audit_baseline.md）** | 利用者がチームPCで実行（docs/next_steps.md A-3） |
 | rkm → 正規化アダプター | 提案のみ | docs/plan.md の対応表（未確認） |
 | 研究用DBスキーマ | 方針は承認済み・**未実行** | docs/migration_proposal.sql（lab_writer で実行する案） |
-| 既存rkmの不変確認（前後ハッシュ） | 提案のみ | 監査クエリ `records_hash` を用意。DB未接続のため未実施 |
+| 既存rkmの不変確認（前後ハッシュ） | 「前」を記録済み（records_hash 356d362b…） | docs/audit_baseline.md。研究用保存先の作成後に「後」を確認 |
 | フェーズ2特徴量（1500m/3000m/SC/ペース比/splits） | 未実装・保留 | 種目・日時・本人・単位の検証後 |

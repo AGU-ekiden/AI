@@ -559,7 +559,12 @@ def build_server(host: str, port: int, data_dir: Path):
     if os.environ.get("LABO_DATA_SOURCE", "synthetic") == "rkm":
         # 実データ（読み取り専用）。接続文字列は RKM_READONLY_DSN（チームPCの環境変数）
         from .adapters.rkm_loader import load_from_db
-        dataset = load_from_db()[0]
+        try:
+            dataset = load_from_db()[0]
+        except Exception as e:  # DBに届かなくても、前回の集計（研究状況）は見られるように起動する
+            print(f"注意: 実データに接続できませんでした（{type(e).__name__}）。前回の集計だけを表示します。"
+                  "ネットワークを確認し、「研究状況」の「実データで再計算・再評価」で再接続できます。")
+            dataset = Dataset({}, [], label="実データ（未接続。前回の集計のみ表示）")
     else:
         dataset = synthetic.generate()
     app = App(store, dataset, users, secure_cookie=secure)

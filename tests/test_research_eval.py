@@ -54,6 +54,13 @@ class EvaluationTests(unittest.TestCase):
         base_only = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig"], selected=[], bootstrap=0))
         self.assertEqual(base_only["score"], base_only["baseline_score"])
 
+    def test_hits_at_10_backtest(self):
+        res = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig"], selected=["sig"], bootstrap=0))
+        h = res["hits_at_10"]
+        self.assertEqual(h["k"], 10)
+        self.assertGreater(h["hits"], h["baseline_hits"])   # 本当に効く特徴量なら毎年10人選んだときの的中が増える
+        self.assertLessEqual(h["hits_outside_baseline_top"], h["hits"])
+
     def test_group_description(self):
         from labo.research_eval import describe
         rows = [(EvalRow(2010, "positive", {"x": float(i)}), 1) for i in range(4)] + \

@@ -221,6 +221,36 @@ def forward_chain(data: list[tuple[EvalRow, int]], refs: list[str], cfg: EvalCon
     return out
 
 
+def hits_at_k(pred_model, pred_base, k: int = 10) -> Optional[dict]:
+    """毎年 k 人を選ぶ使い方の答え合わせ。年度ごとに予測の上位 k 人を選び、達成者が何人いたかを
+    基準（5000mベストだけ）の上位 k 人と比べる。基準の上位に入らない達成者を拾えた数も数える。"""
+    if not pred_model:
+        return None
+    assert [(y, t) for y, t, _ in pred_model] == [(y, t) for y, t, _ in pred_base]
+    years = sorted({y for y, _, _ in pred_model})
+    hits = base_hits = gems = 0
+    for yr in years:
+        idx = [i for i, (y, _, _) in enumerate(pred_model) if y == yr]
+        top_m = sorted(idx, key=lambda i: -pred_model[i][2])[:k]
+        top_b = set(sorted(idx, key=lambda i: -pred_base[i][2])[:k])
+        hits += sum(pred_model[i][1] for i in top_m)
+        base_hits += sum(pred_base[i][1] for i in top_b)
+        gems += sum(pred_model[i][1] for i in top_m if i not in top_b)
+    return {"k": k, "years": len(years), "hits": hits, "baseline_hits": base_hits, "hits_outside_baseline_top": gems,
+            "positives": sum(t for _, t, _ in pred_model)}
+
+
+def fit_model(data: list[tuple[EvalRow, int]], refs: list[str], l2: float):
+    """全データで学習した（前処理, 係数）。個人の点数づけ用。"""
+    prep = make_prep([r for r, _ in data], refs)
+    return prep, fit_logistic([prep.vec(r) for r, _ in data], [t for _, t in data], l2)
+
+
+def contributions(prep: Prep, w: list[float], row: EvalRow) -> dict[str, float]:
+    """各入力が点数（対数オッズ）をどれだけ押し上げ・押し下げたか。"""
+    return {n: round(c * x, 4) for n, c, x in zip(prep.names(), w[1:], prep.vec(row))}
+
+
 def _metrics(pred) -> dict:
     y = [t for _, t, _ in pred]
     p = [v for _, _, v in pred]
@@ -346,6 +376,7 @@ def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] 
         "per_feature": per_feature,
         "coefficients_all_dev_years": coef,
         "calibration": calibration(full_pred, cfg.calibration_bins),
+        "hits_at_10": hits_at_k(full_pred, base_pred, 10),
         "years": {str(k): v for k, v in sorted(years.items())},
         "tested_years": tested,
         "config": {"first_test_fy": cfg.first_test_fy, "min_train_positives": cfg.min_train_positives,

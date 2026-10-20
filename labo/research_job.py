@@ -298,7 +298,9 @@ def score_candidates(ds, labels, defs, rule, data_dir: Path, n_boot: int = 40, s
             continue
         vals = {v.feature_ref: v.value for v in compute_person(ds, ath, defs, rule)}
         people.append((pid, ath, EvalRow(ath.hs_entry_fiscal_year, labels[pid].label, vals)))
-    train = [(row, trainable(row.label)) for _, _, row in people if trainable(row.label) is not None]
+    era = EvalConfig(baseline=BASELINE, candidates=[]).data_from_fy  # 研究評価と同じく収録が十分な世代で学習
+    train = [(row, trainable(row.label)) for _, _, row in people
+             if trainable(row.label) is not None and (era is None or row.entry_fy >= era)]
     if not train or not any(t for _, t in train):
         raise ValueError("成果が確定した人（達成者を含む）がいないため点数を付けられません")
     l2 = EvalConfig(baseline=BASELINE, candidates=[]).l2

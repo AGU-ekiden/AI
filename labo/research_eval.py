@@ -32,8 +32,11 @@ class EvalConfig:
     baseline: list[str]
     candidates: list[str]            # 1つずつ試す特徴量（基準に足す・いまのセットに足す／抜く）
     selected: Optional[list[str]] = None  # 評価値を出すセット（基準に加える）。None なら候補すべて
-    first_test_fy: int = 2010        # これより前の世代は学習専用
-    min_train_positives: int = 15    # 学習側の達成者がこれ未満の年度は評価しない
+    # 記録の収録が十分な世代だけを使う（第6回の診断：2010年度入学以前は5000mの値ありが3〜5割、
+    # 伊那駅伝は0。古い世代の「記録なし」は掲載の薄さで、新しい世代と意味が違う）
+    data_from_fy: Optional[int] = 2011
+    first_test_fy: int = 2013        # これより前の世代は学習専用
+    min_train_positives: int = 12    # 学習側の達成者がこれ未満の年度は評価しない
     holdout_from_fy: Optional[int] = 2018  # この年度以降は最終確認用（include_holdout で使う）
     include_holdout: bool = False
     l2: float = 5.0
@@ -197,6 +200,8 @@ def labeled(rows: list[EvalRow], cfg: EvalConfig) -> list[tuple[EvalRow, int]]:
     for r in rows:
         t = trainable(r.label)
         if t is None:
+            continue
+        if cfg.data_from_fy is not None and r.entry_fy < cfg.data_from_fy:
             continue
         if not cfg.include_holdout and cfg.holdout_from_fy is not None and r.entry_fy >= cfg.holdout_from_fy:
             continue
@@ -379,7 +384,7 @@ def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] 
         "hits_at_10": hits_at_k(full_pred, base_pred, 10),
         "years": {str(k): v for k, v in sorted(years.items())},
         "tested_years": tested,
-        "config": {"first_test_fy": cfg.first_test_fy, "min_train_positives": cfg.min_train_positives,
+        "config": {"data_from_fy": cfg.data_from_fy, "first_test_fy": cfg.first_test_fy, "min_train_positives": cfg.min_train_positives,
                    "holdout_from_fy": cfg.holdout_from_fy, "include_holdout": cfg.include_holdout,
                    "l2": cfg.l2, "bootstrap": cfg.bootstrap, "seed": cfg.seed},
         "excluded_labels": sum(1 for r in rows if trainable(r.label) is None),

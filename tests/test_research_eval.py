@@ -36,7 +36,8 @@ class MetricTests(unittest.TestCase):
 
 class EvaluationTests(unittest.TestCase):
     def test_real_signal_raises_score_over_baseline(self):
-        res = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig", "noise"], bootstrap=100))
+        res = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig", "noise"], bootstrap=100,
+                                               data_from_fy=None, first_test_fy=2010))
         self.assertGreater(res["score"], res["baseline_score"])
         top = res["per_feature"][0]
         self.assertEqual(top["ref"], "sig")
@@ -60,6 +61,11 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(h["k"], 10)
         self.assertGreater(h["hits"], h["baseline_hits"])   # 本当に効く特徴量なら毎年10人選んだときの的中が増える
         self.assertLessEqual(h["hits_outside_baseline_top"], h["hits"])
+
+    def test_data_era_filter(self):
+        res = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig"], bootstrap=0))
+        self.assertTrue(all(2011 <= int(y) < 2018 for y in res["years"]))   # 収録が十分な世代だけ
+        self.assertEqual(res["tested_years"][0], 2013)
 
     def test_group_description(self):
         from labo.research_eval import describe

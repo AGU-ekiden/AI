@@ -5,6 +5,20 @@
 それを足すと箱根での活躍（往路区間5位以内・復路区間2位以内）を**集団として**どれだけ説明できるようになるかを
 「評価値」で確かめる道具。評価値が上がる特徴量を見つけて、セットに足していく。個人の予測や順位は出さない。
 
+## 初回だけ（これで以後は自動で最新版になる）
+1. Git for Windows を入れる（https://git-scm.com/download/win。設定はすべて既定のままでよい）。
+2. PowerShell で、置きたい場所に移動して取得（GitHub へのログインを1回求められる）：
+   ```powershell
+   cd $HOME\Documents
+   git clone -b claude/new-session-pnnp13 https://github.com/AGU-ekiden/AI.git labo-ai
+   ```
+3. 前に使っていたフォルダの `data` フォルダを、新しい `labo-ai` フォルダの中へコピー（トークン・判断記録・集計が入っている）。
+4. 接続文字列を**この PC の利用者の環境変数**に保存（チャットやファイルには書かない）：
+   ```powershell
+   [Environment]::SetEnvironmentVariable("RKM_READONLY_DSN", "（lab_reader の接続文字列）", "User")
+   ```
+以後は **`labo-ai` フォルダの `start_lab.bat` をダブルクリック**するだけ。最新版の取得 → 起動 → ブラウザが開く、まで自動。
+
 ## 毎回の流れ（ほぼ「研究状況」画面だけで完結）
 1. **起動**（チームPCの PowerShell。リポジトリのフォルダで）
    ```powershell

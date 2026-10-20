@@ -549,6 +549,17 @@ async function viewResearch() {
         try { await api("/api/research/run", {}); viewResearch(); } catch (err) { head.append(errorBox(err)); e.target.disabled = false; }
       } }, "実データで再計算・再評価") : null),
     !d.can_run ? h("p", { class: "muted" }, "合成データで起動中のため実行できません（チームPCで LABO_DATA_SOURCE=rkm で起動）。") : null,
+    h("p", { class: "muted small" }, d.version.commit ? `いまの版：${when(d.version.at)}「${d.version.subject}」（${d.version.commit}）` : `いまの版：${d.version.code}`,
+      " ", d.can_update && state.user && state.user.role === "admin" ? h("button", { type: "button", class: "ghost", disabled: running, onclick: async (e) => {
+        if (!window.confirm("最新版を取得して起動し直します。1分ほど使えなくなります。よろしいですか？")) return;
+        e.target.disabled = true;
+        try {
+          const r = await api("/api/admin/update", {});
+          head.append(h("div", { class: "notice" }, r.message));
+          const wait = async (n) => { try { await api("/api/session"); viewResearch(); } catch (_) { if (n > 0) setTimeout(() => wait(n - 1), 5000); } };
+          setTimeout(() => wait(24), 8000);
+        } catch (err) { head.append(errorBox(err)); e.target.disabled = false; }
+      } }, "最新版に更新") : null),
     t ? h("p", { class: "muted" }, `集計 ${when(t._meta.summary_at)}／評価 ${t._meta.eval_at ? when(t._meta.eval_at) : "未実行"}／締切 ${t._meta.cutoff || ""}`) : null);
   if (running) state.pollTimer = setTimeout(() => { if (state.view === "research") viewResearch(); }, 4000);
   if (!t) {

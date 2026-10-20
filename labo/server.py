@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -41,6 +42,65 @@ MAX_BODY = 64 * 1024
 SESSION_COOKIE = "labo_session"
 SESSION_TTL_S = 12 * 3600
 WRITE_ROLES = {"admin", "editor"}
+RESTART_EXIT_CODE = 3  # start_lab.ps1 がこの終了コードを受けると最新版を取得して起動し直す
+
+
+class SessionStore:
+    """ログイン状態。再起動（画面からの更新など）でログアウトしないようファイルに残す。
+    ファイルには sid そのものではなくハッシュだけを書く（権限600）。"""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._lock = threading.Lock()
+        self._d: dict[str, tuple[str, float]] = {}
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            now = time.time()
+            self._d = {k: (v[0], v[1]) for k, v in raw.items() if v[1] > now}
+        except (OSError, ValueError, TypeError, IndexError):
+            self._d = {}
+
+    @staticmethod
+    def _k(sid: str) -> str:
+        return hashlib.sha256(sid.encode()).hexdigest()
+
+    def _save(self) -> None:
+        tmp = self.path.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({k: list(v) for k, v in self._d.items()}, f)
+        os.replace(tmp, self.path)
+
+    def get(self, sid: str):
+        return self._d.get(self._k(sid))
+
+    def __setitem__(self, sid: str, value: tuple[str, float]) -> None:
+        with self._lock:
+            now = time.time()
+            self._d = {k: v for k, v in self._d.items() if v[1] > now}
+            self._d[self._k(sid)] = value
+            self._save()
+
+    def pop(self, sid: Optional[str], default=None):
+        if not sid:
+            return default
+        with self._lock:
+            v = self._d.pop(self._k(sid), default)
+            self._save()
+            return v
+
+
+def app_version() -> dict:
+    """いま動いている版（git のコミット）。git が無ければコード版のハッシュだけ。"""
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    try:
+        out = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%h|%cI|%s"],
+                             capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        commit, at, subject = out.split("|", 2)
+        return {"commit": commit, "at": at, "subject": subject[:80], "code": code_version()}
+    except Exception:
+        return {"commit": None, "at": None, "subject": None, "code": code_version()}
 
 
 class App:
@@ -50,7 +110,7 @@ class App:
         self.ds = dataset
         self.users = users
         self.secure_cookie = secure_cookie
-        self.sessions: dict[str, tuple[str, float]] = {}  # sid -> (user_id, 期限)
+        self.sessions = SessionStore(store.root / "sessions.json")  # sid -> (user_id, 期限)
         self.cancel_flags: dict[str, threading.Event] = {}
         self.threads: dict[str, threading.Thread] = {}
         self.lock = threading.Lock()
@@ -68,11 +128,24 @@ class App:
         defs = [d for d in self.store.definitions() if d.model_input_allowed and d.review_status != "廃止"]
         return {
             "tables": tables, "job": dict(self.research_state), "can_run": self.real_data,
+            "version": app_version(), "can_update": os.environ.get("LABO_SUPERVISED") == "1",
             "features": [{"ref": d.ref, "feature_id": d.feature_id, "name": d.display_name,
                           "category": d.category, "status": d.review_status, "builtin": d.builtin,
                           "runnable": d.review_status in RUNNABLE_STATUSES,
                           "next": sorted(TRANSITIONS.get(d.review_status, set()))} for d in defs],
         }
+
+    def request_update(self, actor: str, role: str) -> dict:
+        """最新版に更新して起動し直す（管理者のみ）。起動用スクリプトが終了コード3を受けて git pull → 再起動する。"""
+        if role != "admin":
+            raise SpecError("最新版への更新は管理者だけが実行できます")
+        if os.environ.get("LABO_SUPERVISED") != "1":
+            raise SpecError("start_lab.bat（または常時起動の設定）から起動したときだけ、画面から更新できます")
+        if self.research_thread and self.research_thread.is_alive():
+            raise SpecError("再計算・再評価の実行中は更新できません。終わってから押してください")
+        self.store.audit(actor, "update_and_restart", {"from": app_version()})
+        threading.Timer(1.0, lambda: os._exit(RESTART_EXIT_CODE)).start()
+        return {"ok": True, "message": "最新版を取得して起動し直します（30秒〜1分）"}
 
     def start_research(self, actor: str) -> dict:
         if not self.real_data:
@@ -485,11 +558,11 @@ def make_handler(app: App):
                     return self._json(200, {"ok": True}, {"Set-Cookie": self._cookie("", 0)})
                 if user["role"] not in WRITE_ROLES and u.path != "/api/features/preview":
                     return self._json(403, {"error": "閲覧のみの利用者は変更・実行できません"})
-                return self._route_post(u.path, body, f"{user['user_id']}:{user['name']}")
+                return self._route_post(u.path, body, f"{user['user_id']}:{user['name']}", user["role"])
             except SpecError as e:
                 return self._json(400, {"error": str(e)})
 
-        def _route_post(self, path: str, body: dict, actor: str):
+        def _route_post(self, path: str, body: dict, actor: str, role: str = "viewer"):
             if path == "/api/features":
                 d = app.store.create_definition(body, actor)
                 return self._json(201, d.to_dict())
@@ -501,6 +574,8 @@ def make_handler(app: App):
                 return self._json(200, app.preview(str(body.get("ref", ""))))
             if path == "/api/research/run":
                 return self._json(202, app.start_research(actor))
+            if path == "/api/admin/update":
+                return self._json(202, app.request_update(actor, role))
             if path in ("/api/runs/plan", "/api/runs"):
                 refs = body.get("features")
                 if not isinstance(refs, list) or not refs or len(refs) > 200 or \

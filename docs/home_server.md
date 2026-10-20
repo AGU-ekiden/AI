@@ -42,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install_home_server.ps1
 |---|---|
 | 開けない | 家のPCの電源・ネット、スマホの Tailscale が「接続」か。家のPCで `Get-ScheduledTask Labo*` の State が Running か |
 | 起動の記録 | `data\server-start.log`（起動時刻とアドレス）、`data\server.log`・`data\server.log.err`（画面の出力） |
-| 最新版にすぐしたい | 家のPCで `Start-ScheduledTask LaboServerDailyUpdate` |
+| 最新版にすぐしたい | **スマホの画面「研究状況」の「最新版に更新」**（管理者のみ。1分ほどで戻る。ログインはそのまま）。家のPCなら `Start-ScheduledTask LaboServerDailyUpdate` でも可 |
 | Windows のパスワードを変えた | 手順3をもう一度実行 |
 | やめたい | 管理者の PowerShell で `powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall_home_server.ps1` |
 

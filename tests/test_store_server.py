@@ -1,6 +1,7 @@
 import json
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -192,6 +193,23 @@ class ServerTests(unittest.TestCase):
         for f in WEB.iterdir():
             self.assertNotIn(b"service_role", f.read_bytes())
         self.assertEqual(self.req("/../data/.token")[0], 404)
+
+    def test_update_requires_supervised_launcher(self):
+        cookie = self.login()
+        code, _, body = self.req("/api/admin/update", {}, cookie)
+        self.assertEqual(code, 400)  # start_lab から起動していなければ画面から更新できない
+        self.assertIn("start_lab", json.loads(body)["error"])
+
+    def test_sessions_survive_restart(self):
+        from labo.server import SessionStore
+        with tempfile.TemporaryDirectory() as tmp:
+            s1 = SessionStore(Path(tmp) / "sessions.json")
+            s1["sid-abc"] = ("u001", time.time() + 60)
+            s2 = SessionStore(Path(tmp) / "sessions.json")
+            self.assertEqual(s2.get("sid-abc")[0], "u001")
+            self.assertNotIn("sid-abc", (Path(tmp) / "sessions.json").read_text())  # ハッシュだけ保存
+            s2.pop("sid-abc")
+            self.assertIsNone(SessionStore(Path(tmp) / "sessions.json").get("sid-abc"))
 
     def test_research_view(self):
         cookie = self.login()

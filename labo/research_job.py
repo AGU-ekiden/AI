@@ -1,13 +1,16 @@
 """実データでの特徴量の集計と研究評価（スクリプトと画面「研究状況」の共通処理）。
 
 出力のうち real_summary.json・eval_summary.json・eval_history.jsonl は集計のみ（氏名・IDなし）。
-real_features.csv は氏名入りでチームPCの外に出さない。個人ごとの予測値・確率・順位は作らない。
+real_features.csv と candidates.json（候補者の点数）は氏名入りでチームPCの外に出さない。
+個人の点数はスカウトの対象を絞るための参考で、最終判断は人が行う（2026-10-20 利用者決定）。
 """
 from __future__ import annotations
 
 import csv
 import hashlib
 import json
+import os
+import random
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +24,7 @@ from .outcomes import OutcomeDefinition
 from .quality import Options, select_runs
 from .research_eval import EvalConfig, EvalRow, evaluate as evaluate_rows
 from .store import Store
+
 
 def quantiles(vals):
     if not vals:
@@ -265,4 +269,72 @@ def run_all(data_dir: Path, rule, loaded=None, progress=lambda msg: None, note: 
         json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     progress("研究評価を実行中（数分かかることがあります）")
     ev = evaluate_and_save(ds, hakone, defs, rule, data_dir, note=note)
+    progress("候補者の点数を計算中")
+    from .adapters.rkm_loader import outcome_labels
+    labels = outcome_labels(ds, hakone, OutcomeDefinition(), datetime.now(timezone.utc).date())
+    score_candidates(ds, labels, defs, rule, data_dir)
     return summary, ev
+
+
+# ---- 候補者の点数（2026-10-20 利用者決定：個人の点数・順位を作る。最終判断は人が行う）----
+def score_candidates(ds, labels, defs, rule, data_dir: Path, n_boot: int = 40, seed: int = 20261020) -> dict:
+    """箱根で活躍する可能性の点数（％）と、5000mベストだけの場合との差（期待超え）を対象者全員に付ける。
+
+    - 学習は成果が確定した人（達成・未達成（確定））全員。点数は結果待ちの世代を含む全員に付ける。
+    - 範囲：学習データを再抽出して学び直したときの点数の10〜90%。
+    - 根拠：各入力が点数をどれだけ押し上げ・押し下げたか。記録の欠けは「データ不足」として示す。
+    出力 data/candidates.json（権限600）は氏名を含むのでチームのPCの外に出さない。"""
+    from .evaluation import trainable
+    from .research_eval import contributions, fit_model, predict
+
+    _, selected, _ = choose(defs)
+    full = list(dict.fromkeys(BASELINE + selected))
+    by_ref = {d.ref: d for d in defs}
+    cohort = next(c for c in builtin_cohorts() if c.cohort_id == "all_with_entry_year")
+    people = []
+    for pid in sorted(ds.athletes):
+        ath = ds.athletes[pid]
+        if not evaluate(cohort, ds, ath, rule)[0]:
+            continue
+        vals = {v.feature_ref: v.value for v in compute_person(ds, ath, defs, rule)}
+        people.append((pid, ath, EvalRow(ath.hs_entry_fiscal_year, labels[pid].label, vals)))
+    train = [(row, trainable(row.label)) for _, _, row in people if trainable(row.label) is not None]
+    if not train or not any(t for _, t in train):
+        raise ValueError("成果が確定した人（達成者を含む）がいないため点数を付けられません")
+    l2 = EvalConfig(baseline=BASELINE, candidates=[]).l2
+    prep, w = fit_model(train, full, l2)
+    prep_b, w_b = fit_model(train, BASELINE, l2)
+    rng = random.Random(seed)
+    boots = []
+    for _ in range(n_boot):
+        smp = [rng.choice(train) for _ in train]
+        if sum(t for _, t in smp) >= 5:
+            boots.append(fit_model(smp, full, l2))
+    out = []
+    for pid, ath, row in people:
+        p = predict(w, prep.vec(row))
+        pb = predict(w_b, prep_b.vec(row))
+        bs = sorted(predict(bw, bp.vec(row)) for bp, bw in boots)
+        lo = round(bs[int(0.1 * len(bs))], 4) if bs else None
+        hi = round(bs[min(len(bs) - 1, int(0.9 * len(bs)))], 4) if bs else None
+        out.append({
+            "person_id": pid, "name": ath.name, "entry_fy": ath.hs_entry_fiscal_year, "label": row.label,
+            "score": round(p, 4), "score_baseline": round(pb, 4), "gain": round(p - pb, 4), "low": lo, "high": hi,
+            "missing": [r for r in full if row.values.get(r) is None],
+            "values": {r: row.values.get(r) for r in full},
+            "contributions": contributions(prep, w, row),
+        })
+    res = {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "cutoff": rule.label, "outcome_definition": OutcomeDefinition().ref,
+        "features": full, "feature_names": {r: by_ref[r].display_name for r in full if r in by_ref},
+        "units": {r: by_ref[r].unit for r in full if r in by_ref},
+        "trained_on": {"n": len(train), "positives": sum(t for _, t in train)},
+        "bootstrap": len(boots), "persons": out,
+        "note": "スカウトの対象を絞るための参考。最終判断は人が行う。記録が欠けている項目は「データ不足」と表示し、その人の点数は参考程度に見る。",
+    }
+    path = Path(data_dir) / "candidates.json"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(res, f, ensure_ascii=False)
+    return res

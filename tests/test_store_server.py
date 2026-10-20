@@ -221,6 +221,9 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(any(f["status"] == "テスト済み" for f in d["features"]))
         code, _, body = self.req("/api/research/run", {}, cookie)
         self.assertEqual(code, 400)
+        code, _, body = self.req("/api/candidates?scope=pending", cookie=cookie)
+        self.assertEqual(code, 200)
+        self.assertFalse(json.loads(body)["available"])   # 点数はまだ作られていない
 
     def test_end_to_end_run_and_export(self):
         cookie = self.login()

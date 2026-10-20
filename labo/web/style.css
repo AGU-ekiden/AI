@@ -99,3 +99,17 @@ progress { width: 100%; max-width: 420px; height: 14px; }
   .frow .flbl { display: block; color: var(--muted); font-size: .78rem; }
   .frow .fcov .flbl { display: inline; }
 }
+/* 候補者 */
+.frow.cand { display: block; padding: 0; }
+.frow.cand > summary, .frow.chead { display: grid; grid-template-columns: minmax(180px, 2fr) 6rem minmax(150px, 1.3fr) 6rem minmax(7rem, 1fr);
+  gap: 8px; padding: 8px 10px; align-items: center; font-weight: 400; }
+.frow.chead { font-weight: 600; font-size: .85rem; background: var(--bg); border-radius: 8px 8px 0 0; }
+.frow.cand > summary { list-style: none; cursor: pointer; }
+.frow.cand > summary::-webkit-details-marker { display: none; }
+.cdetail { padding: 0 10px 10px; }
+.num.up { color: var(--ok-fg); font-weight: 700; }
+@media (max-width: 760px) {
+  .frow.chead { display: none; }
+  .frow.cand > summary { grid-template-columns: 1fr auto; }
+  .frow.cand > summary .cname { grid-column: 1 / -1; }
+}

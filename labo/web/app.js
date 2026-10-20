@@ -663,8 +663,71 @@ async function viewResearch() {
     h("p", { class: "muted small" }, "このページは集計だけを表示します（氏名・個人ごとの予測値・順位はありません）。"));
 }
 
+// ---------- 候補者 ----------
+const LABEL_JA = { positive: "達成", negative_confirmed: "未達成", tracking: "結果待ち", unknown: "不明" };
+const mmss = (v) => { if (v === null || v === undefined) return "—"; const m = Math.floor(v / 60); return `${m}:${(v - m * 60).toFixed(2).padStart(5, "0")}`; };
+const pc = (v) => (v === null || v === undefined) ? "—" : `${(v * 100).toFixed(1)}%`;
+
+async function viewCandidates(scope) {
+  scope = scope || state.candScope || "pending";
+  state.candScope = scope;
+  loading();
+  const d = await api(`/api/candidates?scope=${encodeURIComponent(scope)}`);
+  const head = [h("h1", {}, "候補者"),
+    h("div", { class: "notice" }, "スカウトの対象を絞るための参考です。最終判断は人が行います。点数は「箱根で往路区間5位以内／復路区間2位以内に入る可能性」の目安で、過去の世代から学んだもの。")];
+  if (!d.available) {
+    render(...head, empty("まだ点数がありません。「研究状況」で「実データで再計算・再評価」を押すと作られます。"));
+    return;
+  }
+  const years = [...new Set(d.persons.map((x) => x.entry_fy))].sort((a, b) => b - a);
+  const fy = h("select", { id: "cand-fy" }, h("option", { value: "" }, "すべて"), years.map((y) => h("option", { value: y }, `${y}年度入学`)));
+  const sort = h("select", { id: "cand-sort" }, h("option", { value: "score" }, "点数の高い順"),
+    h("option", { value: "gain" }, "期待超えの大きい順"), h("option", { value: "best" }, "5000mベストの速い順"));
+  const sc = h("select", { id: "cand-scope" }, [["pending", "結果待ちの世代"], ["past", "結果が出た世代（答え合わせ）"], ["all", "全員"]]
+    .map(([v, l]) => h("option", { value: v, selected: v === scope }, l)));
+  sc.addEventListener("change", () => viewCandidates(sc.value));
+  const q = h("input", { type: "text", id: "cand-q", placeholder: "氏名で検索" });
+  const list = h("div", { class: "flist" });
+  const name = (r) => d.feature_names[r] || r;
+  const draw = () => {
+    let rows = d.persons.filter((x) => (!fy.value || String(x.entry_fy) === fy.value) && (!q.value || x.name.includes(q.value.trim())));
+    const best = (x) => x.values["best_5000_s@1"];
+    if (sort.value === "gain") rows = rows.slice().sort((a, b) => b.gain - a.gain);
+    if (sort.value === "best") rows = rows.slice().sort((a, b) => (best(a) ?? 1e9) - (best(b) ?? 1e9));
+    list.replaceChildren(
+      h("div", { class: "frow chead" }, h("div", {}, "選手"), h("div", {}, "5000mベスト"), h("div", {}, "点数（範囲）"), h("div", {}, "期待超え"), h("div", {}, scope === "pending" ? "データ" : "結果")),
+      ...rows.slice(0, 300).map((x, i) => h("details", { class: "frow cand" },
+        h("summary", {},
+          h("span", { class: "cname" }, h("strong", {}, `${i + 1}. ${x.name}`), h("span", { class: "muted small" }, ` ${x.entry_fy}年度入学`)),
+          h("span", { class: "num" }, mmss(best(x))),
+          h("span", {}, h("strong", {}, pc(x.score)), h("span", { class: "muted small" }, ` (${pc(x.low)}〜${pc(x.high)})`)),
+          h("span", { class: "num" + (x.gain > 0 ? " up" : "") }, `${x.gain >= 0 ? "+" : "−"}${Math.abs(x.gain * 100).toFixed(1)}pt`),
+          h("span", {}, scope === "pending" ? (x.missing.length ? h("span", { class: "tag warn" }, `データ不足 ${x.missing.length}`) : h("span", { class: "muted small" }, "そろっている"))
+            : h("span", { class: "tag" + (x.label === "positive" ? " ok" : "") }, LABEL_JA[x.label] || x.label))),
+        h("div", { class: "cdetail" },
+          h("p", { class: "muted small" }, `5000mベストだけで見た場合 ${pc(x.score_baseline)} → いまのセット ${pc(x.score)}`),
+          table(["項目", "値", "点数への影響"], Object.entries(x.contributions).map(([term, c]) => {
+            const ref = term.replace(/:欠損$/, ""); const isMiss = term.endsWith(":欠損");
+            const v = x.values[ref];
+            return h("tr", {}, h("td", {}, isMiss ? `${name(ref)}（記録の有無）` : name(ref)),
+              h("td", { class: "num" }, isMiss ? (v === null || v === undefined ? "記録なし" : "あり") : (v === null || v === undefined ? "記録なし" : (d.units[ref] === "秒" ? mmss(v) : String(v)))),
+              h("td", { class: "num" }, `${c >= 0 ? "▲" : "▼"} ${Math.abs(c).toFixed(2)}`));
+          })),
+          x.missing.length ? h("p", { class: "muted small" }, `記録がない項目：${x.missing.map(name).join("、")}（記録がない＝遅いではありません）`) : null))));
+    if (rows.length > 300) list.append(h("p", { class: "muted small" }, `上位300人まで表示（全${rows.length}人）`));
+  };
+  [fy, sort, q].forEach((el) => el.addEventListener("input", draw));
+  render(...head,
+    h("p", { class: "muted small" }, `点数に使っている特徴量：${d.features.map(name).join("、")}（「研究状況」で「研究で採用」にした特徴量が加わる）／学習 ${d.trained_on.n}人（達成 ${d.trained_on.positives}人）／作成 ${when(d.generated_at)}`),
+    h("div", { class: "row" }, h("div", {}, h("label", { for: "cand-scope" }, "対象"), sc), h("div", {}, h("label", { for: "cand-fy" }, "世代"), fy),
+      h("div", {}, h("label", { for: "cand-sort" }, "並び順"), sort), h("div", {}, h("label", { for: "cand-q" }, "検索"), q)),
+    list,
+    h("p", { class: "muted small" }, "期待超え＝いまのセットの点数 − 5000mベストだけの点数。プラスが大きいほど「自己ベストの順番より上に見てよい」選手。範囲は学習データを入れ替えて学び直したときの10〜90%。"));
+  draw();
+}
+
 // ---------- ルーティング ----------
-const VIEWS = { research: viewResearch, home: viewHome, features: viewFeatures, create: viewCreate, run: viewRun,
+const VIEWS = { research: viewResearch, candidates: () => viewCandidates(), home: viewHome, features: viewFeatures, create: viewCreate, run: viewRun,
   results: viewResults, history: viewHistory, quality: viewQuality };
 
 async function go(view) {

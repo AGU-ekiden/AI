@@ -135,6 +135,19 @@ class App:
                           "next": sorted(TRANSITIONS.get(d.review_status, set()))} for d in defs],
         }
 
+    def candidates(self, scope: str) -> dict:
+        """候補者の点数（data/candidates.json）。scope: pending＝結果待ちの世代、past＝結果が出た世代、all。"""
+        p = self.store.root / "candidates.json"
+        if not p.exists():
+            return {"available": False}
+        d = json.loads(p.read_text(encoding="utf-8"))
+        keep = {"pending": lambda x: x["label"] == "tracking",
+                "past": lambda x: x["label"] in ("positive", "negative_confirmed"),
+                "all": lambda x: True}.get(scope, lambda x: x["label"] == "tracking")
+        d["persons"] = sorted((x for x in d["persons"] if keep(x)), key=lambda x: -x["score"])
+        d["available"] = True
+        return d
+
     def request_update(self, actor: str, role: str) -> dict:
         """最新版に更新して起動し直す（管理者のみ）。起動用スクリプトが終了コード3を受けて git pull → 再起動する。"""
         if role != "admin":
@@ -478,6 +491,10 @@ def make_handler(app: App):
                 return self._json(200, app.overview())
             if path == "/api/research":
                 return self._json(200, app.research())
+            if path == "/api/candidates":
+                user = self._user()
+                app.store.audit(f"{user['user_id']}:{user['name']}", "view_candidates", {"scope": q.get("scope", "")})
+                return self._json(200, app.candidates(q.get("scope", "pending")))
             if path == "/api/features":
                 rates = app.feature_missing_rates()
                 return self._json(200, {

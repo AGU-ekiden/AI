@@ -141,3 +141,43 @@ class ScriptRowsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CandidateScoreTests(unittest.TestCase):
+    """候補者の点数（合成データ・架空の人物で確認）。"""
+
+    def test_scores_ranges_and_file_permissions(self):
+        import os
+        import stat
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from labo import synthetic
+        from labo.features import compute_person
+        from labo.periods import CUTOFF_PRESETS
+        from labo.research_job import research_definitions, score_candidates
+        ds = synthetic.generate()
+        rule = CUTOFF_PRESETS["g2_aug31"]
+        with tempfile.TemporaryDirectory() as tmp:
+            defs, _ = research_definitions(Path(tmp))
+            best = {}
+            for pid, ath in ds.athletes.items():
+                if ath.hs_entry_fiscal_year is None:
+                    continue
+                v = {x.feature_ref: x.value for x in compute_person(ds, ath, defs, rule)}.get("best_5000_s@1")
+                best[pid] = v
+            cut = sorted(v for v in best.values() if v is not None)[len(best) // 3]
+            labels = {pid: SimpleNamespace(label=("tracking" if i % 5 == 0 else
+                                                  "positive" if (best.get(pid) or 9999) <= cut else "negative_confirmed"))
+                      for i, pid in enumerate(sorted(ds.athletes))}
+            res = score_candidates(ds, labels, defs, rule, Path(tmp), n_boot=10)
+            p = Path(tmp) / "candidates.json"
+            self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600)
+        self.assertEqual(res["features"], ["best_5000_s@1"])  # 「研究で採用」がなければ基準だけ
+        self.assertTrue(res["persons"])
+        for x in res["persons"]:
+            self.assertTrue(0 <= x["score"] <= 1)
+            self.assertAlmostEqual(x["gain"], 0, places=4)      # セット＝基準なら期待超えは0
+            if x["values"]["best_5000_s@1"] is None:
+                self.assertIn("best_5000_s@1", x["missing"])
+        self.assertTrue(any(x["label"] == "tracking" for x in res["persons"]))

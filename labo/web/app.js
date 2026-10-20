@@ -560,6 +560,9 @@ async function viewResearch() {
           setTimeout(() => wait(24), 8000);
         } catch (err) { head.append(errorBox(err)); e.target.disabled = false; }
       } }, "最新版に更新") : null),
+    t ? h("div", { class: "row" }, h("span", { class: "muted small" }, "Claude に渡す集計（氏名なし）："),
+      t._meta.eval_at ? h("a", { class: "btn", href: "/api/research/download?file=eval", download: "eval_summary.json" }, "eval_summary.json") : null,
+      h("a", { class: "btn", href: "/api/research/download?file=summary", download: "real_summary.json" }, "real_summary.json")) : null,
     t ? h("p", { class: "muted" }, `集計 ${when(t._meta.summary_at)}／評価 ${t._meta.eval_at ? when(t._meta.eval_at) : "未実行"}／締切 ${t._meta.cutoff || ""}`) : null);
   if (running) state.pollTimer = setTimeout(() => { if (state.view === "research") viewResearch(); }, 4000);
   if (!t) {

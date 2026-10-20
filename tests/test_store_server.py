@@ -221,6 +221,15 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(any(f["status"] == "テスト済み" for f in d["features"]))
         code, _, body = self.req("/api/research/run", {}, cookie)
         self.assertEqual(code, 400)
+        code, _, _ = self.req("/api/research/download?file=eval", cookie=cookie)
+        self.assertEqual(code, 404)                         # まだ評価していない
+        code, _, _ = self.req("/api/research/download?file=candidates", cookie=cookie)
+        self.assertEqual(code, 404)                         # 集計以外のファイルは出さない
+        (self.app.store.root / "eval_summary.json").write_text('{"score": 0.4}', encoding="utf-8")
+        code, headers, body = self.req("/api/research/download?file=eval", cookie=cookie)
+        self.assertEqual((code, json.loads(body)["score"]), (200, 0.4))
+        self.assertIn("attachment", headers["Content-Disposition"])
+        (self.app.store.root / "eval_summary.json").unlink()
         code, _, body = self.req("/api/candidates?scope=pending", cookie=cookie)
         self.assertEqual(code, 200)
         self.assertFalse(json.loads(body)["available"])   # 点数はまだ作られていない

@@ -491,6 +491,14 @@ def make_handler(app: App):
                 return self._json(200, app.overview())
             if path == "/api/research":
                 return self._json(200, app.research())
+            if path == "/api/research/download":
+                # 集計だけのファイル（氏名・IDなし）に限る。候補者・氏名入りのファイルは出さない
+                name = {"eval": "eval_summary.json", "summary": "real_summary.json"}.get(q.get("file", ""))
+                fp = app.store.root / name if name else None
+                if fp is None or not fp.exists():
+                    return self._json(404, {"error": "ファイルがありません（先に再計算・再評価を実行してください）"})
+                return self._send(200, fp.read_bytes(), "application/json",
+                                  {"Content-Disposition": f'attachment; filename="{name}"'})
             if path == "/api/candidates":
                 user = self._user()
                 app.store.audit(f"{user['user_id']}:{user['name']}", "view_candidates", {"scope": q.get("scope", "")})

@@ -1,2 +1,2 @@
-# 実DB接続（段階2以降）にのみ必要。合成データでの利用には不要。
+# Only needed for the real DB (rkm, read-only). Not needed for synthetic data.
 psycopg[binary]>=3.1,<4

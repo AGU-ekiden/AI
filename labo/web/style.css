@@ -85,7 +85,7 @@ progress { width: 100%; max-width: 420px; height: 14px; }
 .small { font-size: .8rem; }
 .stat .ci { color: var(--muted); font-size: .8rem; }
 .flist { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
-.frow { display: grid; grid-template-columns: minmax(180px, 2fr) 7rem minmax(170px, 1.4fr) minmax(170px, 1.4fr) 4.5rem 8.5rem;
+.frow { display: grid; grid-template-columns: minmax(180px, 2fr) 7rem minmax(170px, 1.4fr) minmax(170px, 1.4fr) minmax(7rem, 1fr) 8.5rem;
   gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); align-items: start; }
 .frow:last-child { border-bottom: 0; }
 .fhead { font-weight: 600; font-size: .85rem; background: var(--bg); border-radius: 8px 8px 0 0; }

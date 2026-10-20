@@ -67,6 +67,13 @@ def build(summary: dict) -> dict[str, tuple[list[str], list[list]]]:
     }
 
 
+def _years_text(cov: Optional[dict]) -> str:
+    """入学年度ごとの値ありの割合を「2010:0%」形式で並べた短い文字列。"""
+    if not cov:
+        return ""
+    return " ".join(f"{y[2:]}:{round(100 * v)}%" for y, v in cov.items())
+
+
 def build_eval(ev: dict, history: list[dict]) -> dict[str, tuple[list[str], list[list]]]:
     """研究評価（eval_summary.json・eval_history.jsonl）の表。集計のみ。"""
     ci = ev.get("gain_ci") or {}
@@ -84,13 +91,16 @@ def build_eval(ev: dict, history: list[dict]) -> dict[str, tuple[list[str], list
                       _num(p.get("add_to_baseline")), _num((p.get("add_ci") or {}).get("low")),
                       _num((p.get("add_ci") or {}).get("high")), _num(p.get("add_to_set")),
                       _num(set_ci.get("low")), _num(set_ci.get("high")), _num(p.get("drop_from_full")),
-                      _num(p.get("coverage")), p["ref"]])
+                      _num(p.get("coverage")), p["ref"], _num(p.get("median_pos")), _num(p.get("median_neg")),
+                      _num(p.get("n_pos_with_value")), _num(p.get("n_neg_with_value")),
+                      _years_text(p.get("coverage_by_year"))])
     hist = [[h["generated_at"], h.get("n_features"), _num(h.get("score")), _num(h.get("baseline_score")),
              "最終確認" if h.get("final_check") else "通常", h.get("note", "")] for h in history]
     return {
         "eval_score.csv": (["metric", "value"], score),
         "eval_features.csv": (["feature_id", "name", "role", "add_to_baseline", "add_low", "add_high",
-                               "add_to_set", "set_low", "set_high", "drop_from_full", "coverage", "ref"], feats),
+                               "add_to_set", "set_low", "set_high", "drop_from_full", "coverage", "ref",
+                               "median_pos", "median_neg", "n_pos", "n_neg", "coverage_years"], feats),
         "eval_history.csv": (["at", "n_features", "score", "baseline_score", "kind", "note"], hist),
     }
 

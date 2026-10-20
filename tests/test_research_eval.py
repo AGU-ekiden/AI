@@ -54,6 +54,15 @@ class EvaluationTests(unittest.TestCase):
         base_only = evaluate(synthetic(), EvalConfig(baseline=["best"], candidates=["sig"], selected=[], bootstrap=0))
         self.assertEqual(base_only["score"], base_only["baseline_score"])
 
+    def test_group_description(self):
+        from labo.research_eval import describe
+        rows = [(EvalRow(2010, "positive", {"x": float(i)}), 1) for i in range(4)] + \
+               [(EvalRow(2011, "negative_confirmed", {"x": float(i) if i < 6 else None}), 0) for i in range(8)]
+        d = describe(rows, "x")
+        self.assertIsNone(d["median_pos"])          # 4人は少なすぎるので出さない
+        self.assertEqual(d["median_neg"], 2.5)
+        self.assertEqual(d["coverage_by_year"], {"2010": 1.0, "2011": 0.75})
+
     def test_tracking_unknown_and_holdout_are_not_used(self):
         rows = synthetic()
         res = evaluate(rows, EvalConfig(baseline=["best"], candidates=["sig"], bootstrap=0))

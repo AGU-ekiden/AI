@@ -265,6 +265,25 @@ def calibration(pred, bins: int) -> list[dict]:
     return out
 
 
+MIN_GROUP = 5
+
+
+def describe(data: list[tuple[EvalRow, int]], ref: str) -> dict:
+    """達成・未達成（確定）の集団ごとの値の中央値と、入学年度ごとの値ありの割合（集計のみ）。"""
+    pos = [float(r.values[ref]) for r, t in data if t and r.values.get(ref) is not None]
+    neg = [float(r.values[ref]) for r, t in data if not t and r.values.get(ref) is not None]
+    by_year: dict[int, list[int]] = {}
+    for r, _ in data:
+        c = by_year.setdefault(r.entry_fy, [0, 0])
+        c[0] += r.values.get(ref) is not None
+        c[1] += 1
+    return {"n_pos_with_value": len(pos), "n_neg_with_value": len(neg),
+            # 少人数の集団の値は個人が推測できるので出さない
+            "median_pos": median(pos) if len(pos) >= MIN_GROUP else None,
+            "median_neg": median(neg) if len(neg) >= MIN_GROUP else None,
+            "coverage_by_year": {str(y): round(a / b, 3) for y, (a, b) in sorted(by_year.items())}}
+
+
 def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] = None) -> dict:
     data = labeled(rows, cfg)
     full = list(dict.fromkeys(cfg.baseline + (cfg.candidates if cfg.selected is None else cfg.selected)))
@@ -289,6 +308,7 @@ def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] 
             "add_to_baseline": delta(add),
             "add_ci": bootstrap_delta(base_pred, add, cfg.bootstrap // 5, cfg.seed),
             "coverage": sum(r.values.get(ref) is not None for r, _ in data) / len(data) if data else None,
+            **describe(data, ref),
         }
         if ref in full:  # セットから抜いたら評価値がどれだけ下がるか
             drop = forward_chain(data, [r for r in full if r != ref], cfg)

@@ -512,6 +512,7 @@ function decisionButton(r) {
 const num3 = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v))) ? "—" : Number(v).toFixed(3);
 const sign3 = (v) => (v === "" || v === null || v === undefined) ? "—" : (Number(v) >= 0 ? "+" : "−") + Math.abs(Number(v)).toFixed(3);
 const when = (v) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? v : d.toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" }); };
+const fmtShort = (v) => (v === "" || v === null || v === undefined) ? "—" : String(Math.round(Number(v) * 10) / 10);
 const pct = (v) => (v === "" || v === null || v === undefined) ? "—" : `${(Number(v) * 100).toFixed(0)}%`;
 
 function deltaCell(v, lo, hi, scale) {
@@ -606,7 +607,9 @@ async function viewResearch() {
           e && e.role === "セット内" ? h("div", {}, h("span", { class: "muted small" }, "抜くと "), sign3(e.drop_from_full === "" ? "" : -Number(e.drop_from_full)))
             : e ? deltaCell(e.add_to_set, e.set_low, e.set_high, scale) : h("div", { class: "muted" }, "—")),
         h("div", { class: "fd" }, h("span", { class: "flbl" }, "基準に足す"), e ? deltaCell(e.add_to_baseline, e.add_low, e.add_high, scale) : h("div", { class: "muted" }, "—")),
-        h("div", { class: "fcov" }, h("span", { class: "flbl" }, "値あり "), e ? pct(e.coverage) : "—"),
+        h("div", { class: "fcov" }, h("span", { class: "flbl" }, "値あり "), e ? pct(e.coverage) : "—",
+          e && e.median_pos !== "" && e.median_pos !== undefined ? h("div", { class: "muted small", title: `入学年度ごとの値あり：${e.coverage_years}` },
+            `中央値 達成${fmtShort(e.median_pos)}（${e.n_pos}人）／未達成${fmtShort(e.median_neg)}（${e.n_neg}人）`) : null),
         h("div", { class: "fact" }, action(f, e))))));
 
   const hist = (t.eval_history || []).slice().reverse();

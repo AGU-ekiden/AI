@@ -230,6 +230,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((code, json.loads(body)["score"]), (200, 0.4))
         self.assertIn("attachment", headers["Content-Disposition"])
         (self.app.store.root / "eval_summary.json").unlink()
+        code, _, body = self.req("/api/research/selection", {"max_add": 3, "excluded": ["iqr_5000_365d_s@1"]}, cookie)
+        self.assertEqual(json.loads(body)["max_add"], 3)
+        d = json.loads(self.req("/api/research", cookie=cookie)[2])
+        self.assertEqual(d["selection"]["settings"]["excluded"], ["iqr_5000_365d_s@1"])
         code, _, body = self.req("/api/candidates?scope=pending", cookie=cookie)
         self.assertEqual(code, 200)
         self.assertFalse(json.loads(body)["available"])   # 点数はまだ作られていない

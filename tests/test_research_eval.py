@@ -187,3 +187,24 @@ class CandidateScoreTests(unittest.TestCase):
             if x["values"]["best_5000_s@1"] is None:
                 self.assertIn("best_5000_s@1", x["missing"])
         self.assertTrue(any(x["label"] == "tracking" for x in res["persons"]))
+
+
+class AutoSelectTests(unittest.TestCase):
+    def test_adds_real_signal_and_stops(self):
+        from labo.research_eval import SelectionSettings, auto_select
+        cfg = EvalConfig(baseline=["best"], candidates=["sig", "noise"], data_from_fy=None, first_test_fy=2010)
+        r = auto_select(synthetic(), cfg, ["best"], ["sig", "noise"], SelectionSettings(), n_boot=100)
+        self.assertEqual(r["proposed"], ["sig"])          # 効く特徴量だけが提案に入る
+        self.assertFalse(r["steps"][-1]["passed"])          # 雑音は関門で止まる
+
+    def test_user_controls(self):
+        from labo.research_eval import SelectionSettings, auto_select
+        cfg = EvalConfig(baseline=["best"], candidates=["sig", "noise"], data_from_fy=None, first_test_fy=2010)
+        s = SelectionSettings.from_dict({"excluded": ["sig"], "max_add": 99, "min_coverage": 0.9, "rule": "bad"})
+        self.assertEqual((s.max_add, s.rule), (10, "ci95"))  # 範囲外の値は丸める
+        r = auto_select(synthetic(), cfg, ["best"], ["sig", "noise"], s, n_boot=20)
+        self.assertEqual(r["proposed"], [])
+        self.assertEqual(r["skipped"]["sig"], "利用者が除外")
+        self.assertIn("下限", r["skipped"]["noise"])         # 値ありが7割なので下限90%で外れる
+        none = auto_select(synthetic(), cfg, ["best"], ["sig"], SelectionSettings(max_add=0), n_boot=20)
+        self.assertEqual(none["steps"], [])

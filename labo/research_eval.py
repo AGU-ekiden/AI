@@ -389,3 +389,88 @@ def evaluate(rows: list[EvalRow], cfg: EvalConfig, feature_info: Optional[dict] 
                    "l2": cfg.l2, "bootstrap": cfg.bootstrap, "seed": cfg.seed},
         "excluded_labels": sum(1 for r in rows if trainable(r.label) is None),
     }
+
+
+# ---- 自動選択（提案だけ。採用は人が決める）----
+@dataclass
+class SelectionSettings:
+    """利用者が画面で変えられる自動選択の設定（data/selection_settings.json）。"""
+    enabled: bool = True
+    max_add: int = 5                 # 足す特徴量の上限
+    min_coverage: float = 0.2        # 評価対象のうち値がある人の割合の下限
+    rule: str = "ci95"               # ci95＝95%区間の下限が0より上／prob90＝上積みが正の割合90%以上（ゆるめ）
+    excluded: list = field(default_factory=list)  # 自動選択で使わない特徴量（ref）
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> "SelectionSettings":
+        d = d or {}
+        s = cls()
+        s.enabled = bool(d.get("enabled", s.enabled))
+        s.max_add = max(0, min(10, int(d.get("max_add", s.max_add))))
+        s.min_coverage = max(0.0, min(1.0, float(d.get("min_coverage", s.min_coverage))))
+        s.rule = d.get("rule") if d.get("rule") in ("ci95", "prob90") else s.rule
+        s.excluded = [str(x) for x in d.get("excluded", []) if isinstance(x, str)][:200]
+        return s
+
+    def to_dict(self) -> dict:
+        return {"enabled": self.enabled, "max_add": self.max_add, "min_coverage": self.min_coverage,
+                "rule": self.rule, "excluded": list(self.excluded)}
+
+
+def auto_select(rows: list[EvalRow], cfg: EvalConfig, start: list[str], candidates: list[str],
+                settings: SelectionSettings, feature_info: Optional[dict] = None, n_boot: int = 200) -> dict:
+    """前進選択：いまのセット（start）に、評価値が最も上がる候補を1つずつ足していき、関門を通らなくなったら止める。
+
+    関門：最良の候補の上積みが、settings.rule の基準（95%区間の下限＞0、または上積みが正の割合≥90%）を満たすこと。
+    最良を選んでから確かめるので甘めに出ること（勝者の呪い）に注意。結果は「提案」で、採用は人が決める。"""
+    data = labeled(rows, cfg)
+    info = feature_info or {}
+    cur = list(dict.fromkeys(start))
+    cur_pred = forward_chain(data, cur, cfg)
+    cur_ap = _metrics(cur_pred).get("pr_auc")
+    steps, skipped = [], {}
+    n = len(data) or 1
+    pool = []
+    for ref in candidates:
+        if ref in cur:
+            continue
+        if ref in settings.excluded:
+            skipped[ref] = "利用者が除外"
+            continue
+        cov = sum(r.values.get(ref) is not None for r, _ in data) / n
+        if cov < settings.min_coverage:
+            skipped[ref] = f"値ありが{cov:.0%}（下限{settings.min_coverage:.0%}未満）"
+            continue
+        pool.append(ref)
+    stop = "候補がなくなった"
+    while len(steps) < settings.max_add and pool and cur_ap is not None:
+        trials = []
+        for ref in pool:
+            pred = forward_chain(data, cur + [ref], cfg)
+            ap = _metrics(pred).get("pr_auc")
+            if ap is not None:
+                trials.append((ap - cur_ap, ref, pred))
+        if not trials:
+            stop = "評価できる候補がない"
+            break
+        trials.sort(key=lambda t: -t[0])
+        gain, ref, pred = trials[0]
+        ci = bootstrap_delta(cur_pred, pred, n_boot, cfg.seed)
+        ok = ci is not None and (ci["low"] > 0 if settings.rule == "ci95" else ci["share_positive"] >= 0.9)
+        step = {"step": len(steps) + 1, "ref": ref, **info.get(ref, {}), "score_before": cur_ap,
+                "score_after": cur_ap + gain, "gain": gain, "ci": ci, "passed": ok,
+                "runner_up": [{"ref": r, **info.get(r, {}), "gain": g} for g, r, _ in trials[1:4]]}
+        steps.append(step)
+        if not ok:
+            stop = "最良の候補も関門を通らなかった（偶然の範囲）"
+            break
+        cur.append(ref)
+        pool.remove(ref)
+        cur_pred, cur_ap = pred, cur_ap + gain
+    else:
+        if len(steps) >= settings.max_add:
+            stop = f"上限（{settings.max_add}件）に達した"
+    proposed = [s["ref"] for s in steps if s["passed"]]
+    return {"settings": settings.to_dict(), "start": start, "proposed": proposed,
+            "proposed_score": cur_ap, "steps": steps, "stop_reason": stop, "skipped": skipped,
+            "note": "提案です。採用（研究で採用）は人が決めます。最良を選んでから確かめるため上積みは甘めに出ます。"}

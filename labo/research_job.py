@@ -22,7 +22,7 @@ from .definitions import RUNNABLE_STATUSES
 from .features import compute_person, make_context
 from .outcomes import OutcomeDefinition
 from .quality import Options, select_runs
-from .research_eval import EvalConfig, EvalRow, evaluate as evaluate_rows
+from .research_eval import EvalConfig, EvalRow, SelectionSettings, auto_select, evaluate as evaluate_rows
 from .store import Store
 
 
@@ -226,6 +226,20 @@ def choose(defs, requested: Optional[str] = None, use_all: bool = False):
     return cand, selected, not_model
 
 
+def load_selection_settings(data_dir: Path) -> SelectionSettings:
+    p = Path(data_dir) / "selection_settings.json"
+    try:
+        return SelectionSettings.from_dict(json.loads(p.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        return SelectionSettings()
+
+
+def save_selection_settings(data_dir: Path, payload: dict) -> SelectionSettings:
+    s = SelectionSettings.from_dict(payload)
+    (Path(data_dir) / "selection_settings.json").write_text(json.dumps(s.to_dict(), ensure_ascii=False), encoding="utf-8")
+    return s
+
+
 def evaluate_and_save(ds, hakone, defs, rule, data_dir: Path, requested: Optional[str] = None,
                       use_all: bool = False, final_check: bool = False, note: str = "") -> dict:
     """研究評価を実行し、eval_summary.json と eval_history.jsonl（集計のみ）に書く。"""
@@ -237,6 +251,9 @@ def evaluate_and_save(ds, hakone, defs, rule, data_dir: Path, requested: Optiona
     cfg = EvalConfig(baseline=BASELINE, candidates=cand, selected=selected, include_holdout=final_check)
     info = {d.ref: {"name": d.display_name, "category": d.category} for d in defs}
     res = evaluate_rows(rows, cfg, info)
+    settings = load_selection_settings(data_dir)
+    if settings.enabled and not final_check:  # 提案だけ。採用は人が「研究で採用」で決める
+        res["auto_selection"] = auto_select(rows, cfg, list(res["features_used"]), cand, settings, info)
     feature_set = sorted(res["features_used"])
     res.update({
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

@@ -126,8 +126,17 @@ class App:
         from .research_view import load_tables
         tables = load_tables(self.store.root)
         defs = [d for d in self.store.definitions() if d.model_input_allowed and d.review_status != "廃止"]
+        from .research_job import load_selection_settings
+        auto = None
+        ev = self.store.root / "eval_summary.json"
+        if ev.exists():
+            try:
+                auto = json.loads(ev.read_text(encoding="utf-8")).get("auto_selection")
+            except ValueError:
+                auto = None
         return {
             "tables": tables, "job": dict(self.research_state), "can_run": self.real_data,
+            "selection": {"settings": load_selection_settings(self.store.root).to_dict(), "result": auto},
             "version": app_version(), "can_update": os.environ.get("LABO_SUPERVISED") == "1",
             "features": [{"ref": d.ref, "feature_id": d.feature_id, "name": d.display_name,
                           "category": d.category, "status": d.review_status, "builtin": d.builtin,
@@ -599,6 +608,11 @@ def make_handler(app: App):
                 return self._json(200, app.preview(str(body.get("ref", ""))))
             if path == "/api/research/run":
                 return self._json(202, app.start_research(actor))
+            if path == "/api/research/selection":
+                from .research_job import save_selection_settings
+                s = save_selection_settings(app.store.root, body)
+                app.store.audit(actor, "selection_settings", s.to_dict())
+                return self._json(200, s.to_dict())
             if path == "/api/admin/update":
                 return self._json(202, app.request_update(actor, role))
             if path in ("/api/runs/plan", "/api/runs"):

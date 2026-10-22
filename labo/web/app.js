@@ -582,6 +582,64 @@ async function viewResearch() {
       h("div", { class: "stat" }, h("div", { class: "lbl" }, "偶然の水準（達成者の割合）"), h("div", { class: "num" }, num3(sc["達成の割合（偶然の水準）"])),
         h("div", { class: "ci" }, `評価 ${sc["評価した人数"]}人・達成 ${sc["うち達成"]}人`)))) : null;
 
+  // 自動選択の提案（採用は人が決める）
+  const sel = d.selection || { settings: {}, result: null };
+  const st = sel.settings, ar = sel.result;
+  const fname = (ref) => (d.features.find((f) => f.ref === ref) || {}).name || ref;
+  const fstat = (ref) => (d.features.find((f) => f.ref === ref) || {}).status;
+  const maxAdd = h("input", { type: "number", id: "sel-max", min: 0, max: 10, value: st.max_add ?? 5 });
+  const minCov = h("input", { type: "number", id: "sel-cov", min: 0, max: 100, step: 5, value: Math.round((st.min_coverage ?? 0.2) * 100) });
+  const rule = h("select", { id: "sel-rule" }, h("option", { value: "ci95", selected: st.rule !== "prob90" }, "厳しめ：95%区間の下限が0より上"),
+    h("option", { value: "prob90", selected: st.rule === "prob90" }, "ゆるめ：上積みが正の割合が90%以上"));
+  const enabled = h("input", { type: "checkbox", id: "sel-on", checked: st.enabled !== false });
+  const excl = new Set(st.excluded || []);
+  const exclBoxes = d.features.filter((f) => f.ref !== "best_5000_s@1").map((f) => {
+    const cb = h("input", { type: "checkbox", checked: excl.has(f.ref) });
+    cb.addEventListener("change", () => { cb.checked ? excl.add(f.ref) : excl.delete(f.ref); });
+    return h("label", { class: "check" }, cb, `${f.name}`);
+  });
+  const selMsg = h("div", { "aria-live": "polite" });
+  const adoptAll = async (refs, ev) => {
+    ev.target.disabled = true;
+    try {
+      for (const r of refs) if (fstat(r) === "計算可能") await setStatus(r, "研究で採用", "自動選択の提案を採用（研究状況の画面から）");
+      viewResearch();
+    } catch (err) { selMsg.replaceChildren(errorBox(err)); ev.target.disabled = false; }
+  };
+  const selCard = h("div", { class: "card" },
+    h("h2", {}, "自動選択の提案"),
+    h("p", { class: "muted" }, "いまのセット（基準＋研究で採用）に、評価値が一番上がる特徴量を1つずつ足し、関門を通らなくなったら止めます。結果は提案で、採用はあなたが決めます。"),
+    !ar ? empty("まだ提案がありません。設定を確かめて「実データで再計算・再評価」を押すと作られます。") : h("div", {},
+      h("p", {}, `止まった理由：${ar.stop_reason}`),
+      table(["順", "足した特徴量", "評価値", "上積み（95%区間）", "関門", ""], ar.steps.map((x) => h("tr", {},
+        h("td", { class: "num" }, x.step),
+        h("td", {}, fname(x.ref), x.runner_up && x.runner_up.length ? h("div", { class: "muted small" }, `次点：${x.runner_up.map((r) => `${fname(r.ref)}（${sign3(r.gain)}）`).join("、")}`) : null),
+        h("td", { class: "num" }, `${num3(x.score_before)} → ${num3(x.score_after)}`),
+        h("td", { class: "num" }, `${sign3(x.gain)}`, x.ci ? h("div", { class: "muted small" }, `${sign3(x.ci.low)}〜${sign3(x.ci.high)}`) : null),
+        h("td", {}, h("span", { class: "tag" + (x.passed ? " ok" : " warn") }, x.passed ? "通過" : "通らず")),
+        h("td", {}, canWrite && x.passed && fstat(x.ref) === "計算可能" ? h("button", { type: "button", onclick: (ev) => adoptAll([x.ref], ev) }, "研究で採用") : statusTag(fstat(x.ref) || ""))))),
+      canWrite && ar.proposed.some((r) => fstat(r) === "計算可能") ? h("div", { class: "row" },
+        h("button", { class: "primary", type: "button", onclick: (ev) => adoptAll(ar.proposed, ev) }, `提案の${ar.proposed.length}件をまとめて研究で採用`),
+        h("span", { class: "muted small" }, "採用後に「再計算・再評価」で評価値と候補者の点数に反映")) : null,
+      Object.keys(ar.skipped || {}).length ? h("details", {}, h("summary", {}, `試さなかった特徴量（${Object.keys(ar.skipped).length}件）`),
+        h("ul", {}, Object.entries(ar.skipped).map(([r, why]) => h("li", {}, `${fname(r)}：${why}`)))) : null,
+      h("p", { class: "muted small" }, ar.note)),
+    canWrite ? h("details", { class: "card" }, h("summary", {}, "自動選択の設定（研究のコントロール）"),
+      h("label", { class: "check", for: "sel-on" }, enabled, "再計算・再評価のときに自動選択を行う"),
+      h("div", { class: "row" }, h("div", {}, h("label", { for: "sel-max" }, "足す上限（件）"), maxAdd),
+        h("div", {}, h("label", { for: "sel-cov" }, "値ありの下限（%）"), minCov),
+        h("div", {}, h("label", { for: "sel-rule" }, "関門の基準"), rule)),
+      h("details", {}, h("summary", {}, `自動選択で使わない特徴量（いま${excl.size}件）`), h("div", { class: "grid" }, exclBoxes)),
+      h("div", { class: "row" }, h("button", { type: "button", onclick: async () => {
+        try {
+          await api("/api/research/selection", { enabled: enabled.checked, max_add: Number(maxAdd.value),
+            min_coverage: Number(minCov.value) / 100, rule: rule.value, excluded: [...excl] });
+          selMsg.replaceChildren(h("div", { class: "notice" }, "保存しました。次の「再計算・再評価」から使われます。"));
+        } catch (err) { selMsg.replaceChildren(errorBox(err)); }
+      } }, "設定を保存")),
+      h("p", { class: "muted small" }, "研究で採用にした特徴量は自動選択の出発点になります。手動で採用・外す（セットから外す）こともいつでもできます。")) : null,
+    selMsg);
+
   // 特徴量ごとの上積みと状態
   const evalBy = new Map((t.eval_features || []).map((r) => [r.ref, r]));
   const rows = d.features.filter((f) => f.ref !== "best_5000_s@1").map((f) => ({ f, e: evalBy.get(f.ref) }));
@@ -662,7 +720,7 @@ async function viewResearch() {
       h("li", {}, "下の一覧で「いまのセットに足す」の棒が緑の特徴量の「研究で採用」を押す"),
       h("li", {}, "もう一度「再計算・再評価」を押し、評価値が基準（5000mベストだけ）より上がったか見る")),
     h("p", { class: "muted" }, "評価値は0〜1で高いほど良い。偶然なら約0.16。線（95%区間）が0をまたぐ差は偶然の範囲。新しい特徴量のアイデアは Claude に伝えるか「特徴量作成」で作る。"));
-  render(h("h1", {}, "研究状況"), readOnlyNotice(), guide, head, evalCard, featCard, histCard, dataCard,
+  render(h("h1", {}, "研究状況"), readOnlyNotice(), guide, head, evalCard, selCard, featCard, histCard, dataCard,
     h("p", { class: "muted small" }, "このページは集計だけを表示します（氏名・個人ごとの予測値・順位はありません）。"));
 }
 
